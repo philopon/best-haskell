@@ -66,7 +66,7 @@ application muser mpasswd mdb pool = runApiary def $ give (MongoState pool muser
             let day = ModifiedJulianDay 56886
             Mongo.aggregate "downloads" $ pipeline day 10
         contentType "text/html"
-        showing doc
+        mapM_ (\a -> showing (toAeson a) >> char '\n') doc
 
 pipeline :: Day -> Int64 -> Mongo.Pipeline
 pipeline since num = [match, grouping, sorting, limit]
