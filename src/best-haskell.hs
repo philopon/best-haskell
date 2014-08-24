@@ -21,6 +21,7 @@ import Network.Wai(Application)
 import Network.Wai.Handler.Warp
 
 import Data.Word
+import Data.Char
 import Data.Pool
 import Data.Typeable
 import Data.Maybe
@@ -47,7 +48,7 @@ main :: IO ()
 main = do
     port <- getPortEnv
     (muser, mpasswd, mhost, mport, mdb) <- getMongoConfig
-    let create = Mongo.connect' 6 (Mongo.Host mhost $ Mongo.PortNumber $ fromIntegral mport)
+    let create = Mongo.connect' 20 (Mongo.Host mhost $ Mongo.PortNumber $ fromIntegral mport)
     
     pool <- createPool create Mongo.close 1 20 5
 
@@ -76,45 +77,95 @@ instance Query Since where
         return . Since $ fromGregorian (fromIntegral y') m d)
     qTypeRep _ = typeOf (undefined :: Day)
 
--- member
--- library
--- executable
--- license
--- executables
--- category
+data CabalType = Executable | Library deriving (Typeable, Show)
+instance Path CabalType where
+    readPath s = case T.toLower s of
+        sl | sl == "library"    -> Just Library
+           | sl == "executable" -> Just Executable
+           | otherwise -> Nothing
+
+instance Query CabalType where
+    readQuery (Just s) = case S8.map toLower s of
+        sl | sl `elem` ["l", "lib", "library"]    -> Just Library
+           | sl `elem` ["e", "exe", "executable"] -> Just Executable
+           | otherwise -> Nothing
+    readQuery Nothing = Nothing
 
 rankingAction :: (MonadIO m, MonadBaseControl IO m, Given MongoState)
-              => Maybe Word -> Maybe Word -> Maybe Since -> ActionT m ()
-rankingAction mblimit mbrange mbsince = do
+              => Maybe Word -> Maybe Day -> [T.Text] -> [T.Text] -> Maybe CabalType -> ActionT m ()
+rankingAction mblimit mbsince cats mems typ = do
     contentType "application/json"
 
     let limit = maybe 10 (min 100 . fromIntegral) mblimit
 
-    since <- case mbsince of
-        Just s  -> return $ getDay s
-        Nothing ->
-            addDays (negate . fromIntegral $ maybe 7 (min 100) mbrange)
-            . utctDay <$> liftIO getCurrentTime
-
     doc <- access $ do
         auth
-        rank <- Mongo.aggregate "downloads"
-            [aggrSinceDate since, aggrGroupByPackage, aggrSort, aggrLimit limit]
+        oids <- getOids cats mems typ
+
+        rank <- Mongo.aggregate "downloads" $
+            aggrSinceDateOids mbsince oids :
+            [aggrGroupByPackage, aggrSort, aggrLimit limit]
         catMaybes <$> mapM (\d -> fmap (Mongo.merge d) <$>
             Mongo.findOne (Mongo.select ["_id" Mongo.=: Mongo.valueAt "_id" d] "cabal")) rank
 
     lazyBytes . JSON.encode $ map (toAeson . Mongo.include cabalFields) doc
+  where
+    ctCond mbtyp = case mbtyp of
+        Nothing         -> id
+        Just Library    -> (("has_library" Mongo.=: True):)
+        Just Executable -> (("executables" Mongo.=: ["$ne" Mongo.=: ([] :: [Mongo.Value])] ):)
+    getOids []  []  Nothing = return Nothing
+    getOids cat mem mbtyp   = fmap (Just . map (\d -> Mongo.at "_id" d :: Mongo.ObjectId)) $ Mongo.rest =<<
+        Mongo.find (Mongo.select selDoc "cabal") { Mongo.project = ["_id" Mongo.=: (1 :: Int)] }
+      where
+        selDoc  = ctCond mbtyp $ kv "members" mem $ kv "category" cat []
+        kv _ [] = id
+        kv k vs = ((k Mongo.=: ["$all" Mongo.=: vs]):)
 
+mkSince :: Maybe Word -> Maybe Since -> IO (Maybe Day)
+mkSince mbrange mbsince = case mbsince of
+    Just s  -> return . Just $ getDay s
+    Nothing -> case mbrange of
+        Nothing -> return Nothing
+        Just r  -> Just . addDays (negate $ fromIntegral r) . utctDay <$> getCurrentTime
 
 application :: Mongo.Username -> Mongo.Password -> T.Text -> Pool Mongo.Pipe -> Application
 application muser mpasswd mdb pool = runApiary def $ give (MongoState pool muser mpasswd mdb) $ do
-    [capture|/ranking|] . method GET $ do
-        eqHeader "Accept" "application/json"
-            . ("limit" ?? "number to fetch ranking(default: 10)."  =?: pWord) 
-            . ("range" ?? "days of aggregation(default: 7)."       =?: pWord)
-            . ("since" ?? "date of aggregation. instead of range." =?: (Proxy :: Proxy Since))
-            . document "get package download ranking."
-            $ action rankingAction
+    ("limit" ?? "number to fetch ranking(default: 10)."  =?: pWord) 
+        . ("range" ?? "days of aggregation."                   =?: pWord)
+        . ("since" ?? "date of aggregation. instead of range." =?: (Proxy :: Proxy Since)) $ do
+
+        [capture|/ranking|]
+            . ("category" ?? "category filter."       =*: pText)
+            . ("member"   ?? "member filter."         =*: pText)
+            . ("type"     ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType)) $ do
+
+            eqHeader "Accept" "application/json" . method GET 
+                . document "get package download ranking."
+                . action $ \mblimit mbrange mbsince cats mems typ -> do
+                    since <- liftIO $ mkSince mbrange mbsince
+                    rankingAction mblimit since cats mems typ
+
+        [capture|/ranking/category/:T.Text[category]|] $ do
+            eqHeader "Accept" "application/json" . method GET
+            . document "get ranking par category."
+            . action $ \mblimit mbrange mbsince cat -> do
+                since <- liftIO $ mkSince mbrange mbsince
+                rankingAction mblimit since [cat] [] Nothing
+
+        [capture|/ranking/member/:T.Text[member]|] $ do
+            eqHeader "Accept" "application/json" . method GET
+            . document "get ranking par member."
+            . action $ \mblimit mbrange mbsince mem -> do
+                since <- liftIO $ mkSince mbrange mbsince
+                rankingAction mblimit since [] [mem] Nothing
+
+        [capture|/ranking/:CabalType[library or executable]|] $ do
+            eqHeader "Accept" "application/json" . method GET
+            . document "get ranking par type."
+            . action $ \mblimit mbrange mbsince ct -> do
+                since <- liftIO $ mkSince mbrange mbsince
+                rankingAction mblimit since [] [] (Just ct)
 
     [capture|/package/:T.Text[package name]|] . method GET $ do
         eqHeader "Accept" "application/json"
@@ -150,9 +201,11 @@ cabalFields = [ "homepage", "copyright", "category"
               , "description"
               ]
 
-aggrSinceDate :: Day -> Mongo.Document
-aggrSinceDate since = [ "$match" Mongo.=: 
-    [ "date" Mongo.=: [ "$gte" Mongo.=: Mongo.UTC (UTCTime since 0)] ] ]
+aggrSinceDateOids :: Maybe Day -> Maybe [Mongo.ObjectId] -> Mongo.Document
+aggrSinceDateOids mbsince mboids = [ "$match" Mongo.=:
+    (maybe id (\since -> (("date"    Mongo.=: ["$gte" Mongo.=: Mongo.UTC (UTCTime since 0)]):)) mbsince .
+     maybe id (\oids ->  (("package" Mongo.=: ["$in"  Mongo.=: oids]):)) mboids) []
+    ]
 
 aggrGroupByPackage :: Mongo.Document
 aggrGroupByPackage = [ "$group" Mongo.=:
