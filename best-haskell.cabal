@@ -1,0 +1,85 @@
+name:                best-haskell
+version:             0.1.0.0
+-- synopsis:            
+-- description:         
+license:             MIT
+license-file:        LICENSE
+author:              HirotomoMoriwaki
+maintainer:          philopon.dependence@gmail.com
+-- copyright:           
+category:            Web
+build-type:          Simple
+extra-source-files:  Procfile
+                   , package.json
+                   , ./scripts/execute.sh
+cabal-version:       >=1.10
+
+library
+  exposed-modules:     Tar, Common
+  build-depends:       base                 >=4.6  && <4.8
+                     , process              >=1.2  && <1.3
+                     , text                 >=1.1  && <1.2
+                     , conduit              >=1.1  && <1.2
+                     , conduit-extra        >=1.1  && <1.2
+                     , binary               >=0.7  && <0.8
+                     , bytestring           >=0.10 && <0.11
+  hs-source-dirs:      library
+  ghc-options:         -Wall -O2
+  default-language:    Haskell2010
+
+executable best-haskell
+  main-is:             Main.hs
+  -- other-modules:       
+  build-depends:       base                 >=4.6  && <4.8
+                     , best-haskell
+                     , bytestring           >=0.10 && <0.11
+                     , wai                  >=3.0  && <3.1
+                     , warp                 >=3.0  && <3.1
+                     , apiary               >=0.15 && <0.16
+                     , text                 >=1.1  && <1.2
+                     , mongoDB              >=2.0  && <2.1
+                     , time                 >=1.4  && <1.5
+                     , resource-pool        >=0.2 && <0.3
+                     , reflection           >=1.5 && <1.6
+                     , monad-control        >=0.3 && <0.4
+                     , process              >=1.2 && <1.3
+  ghc-options:         -Wall -O2 -threaded
+  default-language:    Haskell2010
+
+executable register-cabal
+  main-is:             register-cabal.hs
+  build-depends:       base                 >=4.6  && <4.8
+                     , best-haskell
+                     , binary               >=0.7  && <0.8
+                     , Cabal                >=1.20 && <1.21
+                     , conduit              >=1.1  && <1.2
+                     , conduit-extra        >=1.1  && <1.2
+                     , vector               >=0.10 && <0.11
+                     , unordered-containers >=0.2  && <0.3
+                     , aeson                >=0.7  && <0.9
+                     , resourcet            >=1.1  && <1.2
+                     , transformers         >=0.3  && <0.5
+                     , mtl                  >=2.2  && <2.3
+                     , http-client          >=0.3  && <0.4
+                     , bytestring           >=0.10 && <0.11
+                     , text                 >=1.1  && <1.2
+                     , mongoDB              >=2.0  && <2.1
+  ghc-options:         -Wall -O2 -threaded
+  default-language:    Haskell2010
+
+executable register-downloads
+  main-is:             register-downloads.hs
+  build-depends:       base                 >=4.6  && <4.8
+                     , best-haskell
+                     , csv-conduit          >=0.6  && <0.7
+                     , resourcet            >=1.1  && <1.2
+                     , transformers         >=0.3  && <0.5
+                     , mtl                  >=2.2  && <2.3
+                     , time                 >=1.4  && <1.5
+                     , unordered-containers >=0.2  && <0.3
+                     , text                 >=1.1  && <1.2
+                     , conduit              >=1.1  && <1.2
+                     , conduit-extra        >=1.1  && <1.2
+                     , mongoDB              >=2.0  && <2.1
+  ghc-options:         -Wall -O2 -threaded
+  default-language:    Haskell2010
