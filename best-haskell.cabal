@@ -28,7 +28,7 @@ library
   default-language:    Haskell2010
 
 executable best-haskell
-  main-is:             Main.hs
+  main-is:             src/best-haskell.hs
   -- other-modules:       
   build-depends:       base                 >=4.6  && <4.8
                      , best-haskell
@@ -47,7 +47,7 @@ executable best-haskell
   default-language:    Haskell2010
 
 executable register-cabal
-  main-is:             register-cabal.hs
+  main-is:             src/register-cabal.hs
   build-depends:       base                 >=4.6  && <4.8
                      , best-haskell
                      , binary               >=0.7  && <0.8
@@ -68,7 +68,7 @@ executable register-cabal
   default-language:    Haskell2010
 
 executable register-downloads
-  main-is:             register-downloads.hs
+  main-is:             src/register-downloads.hs
   build-depends:       base                 >=4.6  && <4.8
                      , best-haskell
                      , csv-conduit          >=0.6  && <0.7
