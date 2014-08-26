@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Common (getMongoConfig, toAeson) where
+module Common (getMongoConfig, getMemcachedConfig, toAeson) where
 
 import System.Environment
 import System.Process
@@ -17,23 +17,34 @@ import qualified Data.Text.IO as T
 import qualified Data.Bson  as B
 import qualified Data.Aeson as A
 
-getMongoConfig :: IO (T.Text, T.Text, String, Int, T.Text)
-getMongoConfig = getMongoConfig' "MONGOHQ_URL"
+getMemcachedConfig :: IO (T.Text, Int, T.Text, T.Text)
+getMemcachedConfig = getMemcachedConfig' "MEMCACHIER"
 
-getMongoConfig' :: String -> IO (T.Text, T.Text, String, Int, T.Text)
-getMongoConfig' ev = do
+getMemcachedConfig' :: String -> IO (T.Text, Int, T.Text, T.Text)
+getMemcachedConfig' evpfx = do
+    (s,p) <- T.break (== ':') <$> getHerokuConfig (evpfx ++ "_SERVERS")
+    usr   <- getHerokuConfig (evpfx ++ "_USERNAME")
+    pwd   <- getHerokuConfig (evpfx ++ "_PASSWORD")
+    return (s, read $ T.unpack $ T.tail p, usr, pwd)
+
+
+getMongoConfig :: IO (T.Text, T.Text, String, Int, T.Text)
+getMongoConfig = getDatabaseConfig "MONGOHQ_URL"
+
+getDatabaseConfig :: String -> IO (T.Text, T.Text, String, Int, T.Text)
+getDatabaseConfig ev = do
     s0 <- handle (\(_::SomeException) -> getHerokuConfig ev) $ T.pack <$> getEnv ev
     let (_,      s1)    = T.breakOnEnd "://" s0
         (user,   s2) = T.break (== ':') s1
         (passwd, s3) = T.break (== '@') (T.tail s2)
         (host,   s4) = T.break (== ':') (T.tail s3)
         (port,   s5) = T.break (== '/') (T.tail s4)
-    return (user, passwd, T.unpack host, read $ T.unpack port, T.tail s5)
+    return (user, passwd, T.unpack host, read $ T.unpack port, (if T.null s5 then id else T.tail) s5)
 
 getHerokuConfig :: String -> IO T.Text
 getHerokuConfig key = do
     (_, Just stdout, _, h) <- createProcess
-        (proc "heroku" ["config:get", key]) {std_out = CreatePipe}
+        (proc "heroku" ["config:get", key, "--app", "best-haskell"]) {std_out = CreatePipe}
     xc <- waitForProcess h
     if xc == ExitSuccess
         then T.hGetLine stdout

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -14,12 +15,14 @@ import Control.Monad.Trans.Control
 import System.Environment
 
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Char8 as S8
+import qualified Data.ByteString.Lazy  as L
 
 import Web.Apiary
-import Network.Wai(Application)
 import Network.Wai.Handler.Warp
 
+import Data.Binary.Put
 import Data.Word
 import Data.Char
 import Data.Pool
@@ -30,6 +33,7 @@ import Data.Reflection
 import qualified Data.Aeson as JSON
 
 import qualified Database.MongoDB as Mongo
+import qualified Database.Memcached.Binary.Maybe as Mc
 
 import Common
 
@@ -37,11 +41,12 @@ getPortEnv :: IO Int
 getPortEnv = 
     handle (\(_ :: SomeException) -> return 3000) (read <$> getEnv "PORT")
 
-data MongoState = MongoState
+data AppState = AppState
     { mongoPool     :: Pool Mongo.Pipe
     , mongoUser     :: T.Text
     , mongoPassword :: T.Text
     , mongoDB       :: T.Text
+    , memcachedConn :: Mc.Connection
     }
 
 main :: IO ()
@@ -49,19 +54,26 @@ main = do
     port <- getPortEnv
     (muser, mpasswd, mhost, mport, mdb) <- getMongoConfig
     let create = Mongo.connect' 20 (Mongo.Host mhost $ Mongo.PortNumber $ fromIntegral mport)
-    
     pool <- createPool create Mongo.close 1 20 5
 
-    run port $ application muser mpasswd mdb pool
+    (chost, cport, cuser, cpasswd) <- getMemcachedConfig
+    mc <- Mc.connect def
+        { Mc.numConnection = 10
+        , Mc.connectHost   = T.unpack chost
+        , Mc.connectPort   = Mc.PortNumber $ fromIntegral cport
+        , Mc.connectAuth   = [Mc.Plain (T.encodeUtf8 cuser) (T.encodeUtf8 cpasswd)]
+        }
 
-access' :: (MonadIO m, MonadBaseControl IO m) => MongoState -> Mongo.Action m a -> m a
+    run port . runApiary def $ give (AppState pool muser mpasswd mdb mc) application
+
+access' :: (MonadIO m, MonadBaseControl IO m) => AppState -> Mongo.Action m a -> m a
 access' mst m = withResource (mongoPool mst) $ \pipe ->
     Mongo.access pipe Mongo.master (mongoDB mst) m
 
-access :: (MonadIO m, MonadBaseControl IO m, Given MongoState) => Mongo.Action m a -> m a
+access :: (MonadIO m, MonadBaseControl IO m, Given AppState) => Mongo.Action m a -> m a
 access = access' given
 
-auth :: (MonadIO m, Given MongoState) => Mongo.Action m ()
+auth :: (MonadIO m, Given AppState) => Mongo.Action m ()
 auth = do
     b <- Mongo.auth (mongoUser given) (mongoPassword given)
     unless b $ fail "MongoDB auth failed."
@@ -91,24 +103,54 @@ instance Query CabalType where
            | otherwise -> Nothing
     readQuery Nothing = Nothing
 
-rankingAction :: (MonadIO m, MonadBaseControl IO m, Given MongoState)
+mkCacheKey :: Maybe Word -> Maybe Day -> [T.Text] -> [T.Text] -> Maybe CabalType -> S8.ByteString
+mkCacheKey lim snc cat mem typ = L.toStrict . runPut $ do
+    putByteString "ranking/"
+    maybe (return ()) (putWord64be . fromIntegral) lim
+    putWord8 47 -- '/'
+    maybe (return ()) ((\(y,m,d) -> do
+        putWord16be (fromIntegral y)
+        putWord8    (fromIntegral m)
+        putWord8    (fromIntegral d)
+        ) . toGregorian) snc
+    putWord8 47 -- '/'
+    mapM_ (putByteString . T.encodeUtf8) cat
+    putWord8 47 -- '/'
+    mapM_ (putByteString . T.encodeUtf8) mem
+    putWord8 47 -- '/'
+    case typ of
+        Nothing         -> putWord8 0
+        Just Library    -> putWord8 1
+        Just Executable -> putWord8 2
+
+rankingAction :: (MonadIO m, MonadBaseControl IO m, Given AppState)
               => Maybe Word -> Maybe Day -> [T.Text] -> [T.Text] -> Maybe CabalType -> ActionT m ()
 rankingAction mblimit mbsince cats mems typ = do
     contentType "application/json"
 
-    let limit = maybe 10 (min 100 . fromIntegral) mblimit
+    let cacheKey = mkCacheKey mblimit mbsince cats mems typ
 
-    doc <- access $ do
-        auth
-        oids <- getOids cats mems typ
+    liftIO (Mc.get_ cacheKey (memcachedConn given)) >>= \case
+        Nothing -> do
+            let limit = maybe 10 (min 100 . fromIntegral) mblimit
 
-        rank <- Mongo.aggregate "downloads" $
-            aggrSinceDateOids mbsince oids :
-            [aggrGroupByPackage, aggrSort, aggrLimit limit]
-        catMaybes <$> mapM (\d -> fmap (Mongo.merge d) <$>
-            Mongo.findOne (Mongo.select ["_id" Mongo.=: Mongo.valueAt "_id" d] "cabal")) rank
+            doc <- access $ do
+                auth
+                oids <- getOids cats mems typ
 
-    lazyBytes . JSON.encode $ map (toAeson . Mongo.include cabalFields) doc
+                rank <- Mongo.aggregate "downloads" $
+                    aggrSinceDateOids mbsince oids :
+                    [aggrGroupByPackage, aggrSort, aggrLimit limit]
+                catMaybes <$> mapM (\d -> fmap (Mongo.merge d) <$>
+                    Mongo.findOne (Mongo.select ["_id" Mongo.=: Mongo.valueAt "_id" d] "cabal")) rank
+
+            let rb = JSON.encode $ map (toAeson . Mongo.include cabalFields) doc
+
+            void . liftIO $ Mc.set 0 0 cacheKey rb (memcachedConn given)
+
+            lazyBytes rb
+
+        Just c -> lazyBytes c
   where
     ctCond mbtyp = case mbtyp of
         Nothing         -> id
@@ -129,8 +171,8 @@ mkSince mbrange mbsince = case mbsince of
         Nothing -> return Nothing
         Just r  -> Just . addDays (negate $ fromIntegral r) . utctDay <$> getCurrentTime
 
-application :: Mongo.Username -> Mongo.Password -> T.Text -> Pool Mongo.Pipe -> Application
-application muser mpasswd mdb pool = runApiary def $ give (MongoState pool muser mpasswd mdb) $ do
+application :: Given AppState => Apiary '[] ()
+application = do
     ("limit" ?? "number to fetch ranking(default: 10)."  =?: pWord) 
         . ("range" ?? "days of aggregation."                   =?: pWord)
         . ("since" ?? "date of aggregation. instead of range." =?: (Proxy :: Proxy Since)) $ do
