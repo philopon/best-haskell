@@ -5,7 +5,7 @@ set -e
 branch=`git symbolic-ref --short HEAD`
 
 cabal configure
-cabal build
+cabal build exe:best-haskell
 
 git checkout --orphan deploy
 git rm --cached -r .
