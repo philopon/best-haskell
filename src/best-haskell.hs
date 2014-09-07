@@ -1,93 +1,67 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-
-import Control.Exception
-import Control.Applicative
-import Control.Monad
-import Control.Monad.Trans.Control
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 import System.Environment
-
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import qualified Data.ByteString.Char8 as S8
-import qualified Data.ByteString.Lazy  as L
+import System.Process
+import System.Exit
 
 import Web.Apiary
+import qualified Web.Apiary.MongoDB as M
 import Network.Wai.Handler.Warp
 
-import Data.Binary.Put
+import Control.Monad.Trans.Control
+import Control.Applicative
+import Control.Exception
+
 import Data.Word
-import Data.Char
-import Data.Pool
-import Data.Typeable
 import Data.Maybe
+import Data.Char
+import Data.Typeable
 import Data.Time
-import Data.Reflection
-import qualified Data.Aeson as JSON
+import qualified Data.Text    as T
+import qualified Data.Text.IO as T
+import qualified Data.ByteString.Char8 as S8
 
-import qualified Database.MongoDB as Mongo
-import qualified Database.Memcached.Binary.Maybe as Mc
+herokuAppName, mongoEnvName :: String
+herokuAppName = "best-haskell"
+mongoEnvName = "MONGOHQ_URL"
 
-import Common
+getHerokuConfig :: String -> IO T.Text
+getHerokuConfig key = do
+    (_, Just stdout, _, h) <- createProcess
+        (proc "heroku" ["config:get", key, "--app", herokuAppName]) {std_out = CreatePipe}
+    xc <- waitForProcess h
+    if xc == ExitSuccess
+        then T.hGetLine stdout
+        else fail "heroku command failure."
 
-getPortEnv :: IO Int
-getPortEnv = 
-    handle (\(_ :: SomeException) -> return 3000) (read <$> getEnv "PORT")
+getEnvOrHerokuConfig :: String -> IO T.Text
+getEnvOrHerokuConfig ev = handle (\(_::SomeException) -> getHerokuConfig ev) $ T.pack <$> getEnv ev
 
-data AppState = AppState
-    { mongoPool     :: Pool Mongo.Pipe
-    , mongoUser     :: T.Text
-    , mongoPassword :: T.Text
-    , mongoDB       :: T.Text
-    , memcachedConn :: Mc.Connection
-    }
+getMongoDBConfig :: String -> IO (T.Text, T.Text, String, Int, T.Text)
+getMongoDBConfig ev = do
+    s0 <- getEnvOrHerokuConfig ev
+    let (_,      s1)    = T.breakOnEnd "://" s0
+        (user,   s2) = T.break (== ':') s1
+        (passwd, s3) = T.break (== '@') (T.tail s2)
+        (host_,  s4) = T.break (== ':') (T.tail s3)
+        (port,   s5) = T.break (== '/') (T.tail s4)
+    return (user, passwd, T.unpack host_, read $ T.unpack port, (if T.null s5 then id else T.tail) s5)
 
-main :: IO ()
-main = do
-    port <- getPortEnv
-    (muser, mpasswd, mhost, mport, mdb) <- getMongoConfig
-    let create = Mongo.connect' 20 (Mongo.Host mhost $ Mongo.PortNumber $ fromIntegral mport)
-    pool <- createPool create Mongo.close 1 20 5
-
-    (chost, cport, cuser, cpasswd) <- getMemcachedConfig
-    mc <- Mc.connect def
-        { Mc.numConnection = 10
-        , Mc.connectHost   = T.unpack chost
-        , Mc.connectPort   = Mc.PortNumber $ fromIntegral cport
-        , Mc.connectAuth   = [Mc.Plain (T.encodeUtf8 cuser) (T.encodeUtf8 cpasswd)]
-        }
-
-    run port . runApiary def $ give (AppState pool muser mpasswd mdb mc) application
-
-access' :: (MonadIO m, MonadBaseControl IO m) => AppState -> Mongo.Action m a -> m a
-access' mst m = withResource (mongoPool mst) $ \pipe ->
-    Mongo.access pipe Mongo.master (mongoDB mst) m
-
-access :: (MonadIO m, MonadBaseControl IO m, Given AppState) => Mongo.Action m a -> m a
-access = access' given
-
-auth :: (MonadIO m, Given AppState) => Mongo.Action m ()
-auth = do
-    b <- Mongo.auth (mongoUser given) (mongoPassword given)
-    unless b $ fail "MongoDB auth failed."
-
-newtype Since = Since {getDay :: Day} deriving (Typeable, Show)
-
-instance Query Since where
-    readQuery = (>>= \s0 -> do
-        (y, s1) <- S8.readInt s0
-        (m, s2) <- S8.readInt (S8.tail s1)
-        (d,  _) <- S8.readInt (S8.tail s2)
-        let y' = if y < 100 then 2000 + y else y
-        return . Since $ fromGregorian (fromIntegral y') m d)
-    qTypeRep _ = typeOf (undefined :: Day)
+serv :: (Extensions '[M.MongoDB] -> IO Application) -> IO ()
+serv app = do
+    port:_ <- getArgs
+    (u,w,h,p,d) <- getMongoDBConfig mongoEnvName
+    let mongoConf = def { M.mongoDBHost     = M.Host h (M.PortNumber $ fromIntegral p)
+                        , M.mongoDBAuth     = Just (u, w)
+                        , M.mongoDBDatabase = d
+                        }
+    serverWith (M.initMongoDB mongoConf) (run $ read port) app
 
 data CabalType = Executable | Library deriving (Typeable, Show)
 instance Path CabalType where
@@ -95,6 +69,7 @@ instance Path CabalType where
         sl | sl == "library"    -> Just Library
            | sl == "executable" -> Just Executable
            | otherwise -> Nothing
+    pathRep = typeRep
 
 instance Query CabalType where
     readQuery (Just s) = case S8.map toLower s of
@@ -102,161 +77,57 @@ instance Query CabalType where
            | sl `elem` ["e", "exe", "executable"] -> Just Executable
            | otherwise -> Nothing
     readQuery Nothing = Nothing
+    qTypeRep = typeRep
 
-mkCacheKey :: Maybe Word -> Maybe Day -> [T.Text] -> [T.Text] -> Maybe CabalType -> S8.ByteString
-mkCacheKey lim snc cat mem typ = L.toStrict . runPut $ do
-    putByteString "ranking/"
-    maybe (return ()) (putWord64be . fromIntegral) lim
-    putWord8 47 -- '/'
-    maybe (return ()) ((\(y,m,d) -> do
-        putWord16be (fromIntegral y)
-        putWord8    (fromIntegral m)
-        putWord8    (fromIntegral d)
-        ) . toGregorian) snc
-    putWord8 47 -- '/'
-    mapM_ (putByteString . T.encodeUtf8) cat
-    putWord8 47 -- '/'
-    mapM_ (putByteString . T.encodeUtf8) mem
-    putWord8 47 -- '/'
-    case typ of
-        Nothing         -> putWord8 0
-        Just Library    -> putWord8 1
-        Just Executable -> putWord8 2
-
-rankingAction :: (MonadIO m, MonadBaseControl IO m, Given AppState)
-              => Maybe Word -> Maybe Day -> [T.Text] -> [T.Text] -> Maybe CabalType -> ActionT m ()
-rankingAction mblimit mbsince cats mems typ = do
-    contentType "application/json"
-
-    let cacheKey = mkCacheKey mblimit mbsince cats mems typ
-
-    liftIO (Mc.get_ cacheKey (memcachedConn given)) >>= \case
-        Nothing -> do
-            let limit = maybe 10 (min 100 . fromIntegral) mblimit
-
-            doc <- access $ do
-                auth
-                oids <- getOids cats mems typ
-
-                rank <- Mongo.aggregate "downloads" $
-                    aggrSinceDateOids mbsince oids :
-                    [aggrGroupByPackage, aggrSort, aggrLimit limit]
-                catMaybes <$> mapM (\d -> fmap (Mongo.merge d) <$>
-                    Mongo.findOne (Mongo.select ["_id" Mongo.=: Mongo.valueAt "_id" d] "cabal")) rank
-
-            let rb = JSON.encode $ map (toAeson . Mongo.include cabalFields) doc
-
-            void . liftIO $ Mc.set 0 0 cacheKey rb (memcachedConn given)
-
-            lazyBytes rb
-
-        Just c -> lazyBytes c
-  where
-    ctCond mbtyp = case mbtyp of
-        Nothing         -> id
-        Just Library    -> (("has_library" Mongo.=: True):)
-        Just Executable -> (("executables" Mongo.=: ["$ne" Mongo.=: ([] :: [Mongo.Value])] ):)
-    getOids []  []  Nothing = return Nothing
-    getOids cat mem mbtyp   = fmap (Just . map (\d -> Mongo.at "_id" d :: Mongo.ObjectId)) $ Mongo.rest =<<
-        Mongo.find (Mongo.select selDoc "cabal") { Mongo.project = ["_id" Mongo.=: (1 :: Int)] }
-      where
-        selDoc  = ctCond mbtyp $ kv "members" mem $ kv "category" cat []
-        kv _ [] = id
-        kv k vs = ((k Mongo.=: ["$all" Mongo.=: vs]):)
-
-mkSince :: Maybe Word -> Maybe Since -> IO (Maybe Day)
-mkSince mbrange mbsince = case mbsince of
-    Just s  -> return . Just $ getDay s
-    Nothing -> case mbrange of
-        Nothing -> return Nothing
-        Just r  -> Just . addDays (negate $ fromIntegral r) . utctDay <$> getCurrentTime
-
-application :: Given AppState => Apiary '[] ()
-application = do
-    ("limit" ?? "number to fetch ranking(default: 10)."  =?: pWord) 
-        . ("range" ?? "days of aggregation."                   =?: pWord)
-        . ("since" ?? "date of aggregation. instead of range." =?: (Proxy :: Proxy Since)) $ do
+main :: IO ()
+main = serv $ runApiary def $ do
+    ("limit" ?? "number to fetch ranking."                     =?!: (10 :: Word))
+        . ("range" ?? "days of aggregation."                   =?:  pWord)
+        . ("since" ?? "date of aggregation. instead of range." =?:  (Proxy :: Proxy Day)) $ do
 
         [capture|/ranking|]
             . ("category" ?? "category filter."       =*: pText)
             . ("member"   ?? "member filter."         =*: pText)
             . ("type"     ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType)) $ do
 
-            eqHeader "Accept" "application/json" . method GET 
+            accept "application/json" . method GET 
                 . document "get package download ranking."
-                . action $ \mblimit mbrange mbsince cats mems typ -> do
+                . action $ \limit mbrange mbsince cats mems typ -> do
                     since <- liftIO $ mkSince mbrange mbsince
-                    rankingAction mblimit since cats mems typ
+                    rankingAction limit since cats mems typ
 
-        [capture|/ranking/category/:T.Text[category]|] $ do
-            eqHeader "Accept" "application/json" . method GET
-            . document "get ranking par category."
-            . action $ \mblimit mbrange mbsince cat -> do
-                since <- liftIO $ mkSince mbrange mbsince
-                rankingAction mblimit since [cat] [] Nothing
+mkSince :: Maybe Word -> Maybe Day -> IO (Maybe Day)
+mkSince mbrange mbsince = case mbsince of
+    Just s  -> return $ Just s
+    Nothing -> case mbrange of
+        Nothing -> return Nothing
+        Just r  -> Just . addDays (negate $ fromIntegral r) . utctDay <$> getCurrentTime
 
-        [capture|/ranking/member/:T.Text[member]|] $ do
-            eqHeader "Accept" "application/json" . method GET
-            . document "get ranking par member."
-            . action $ \mblimit mbrange mbsince mem -> do
-                since <- liftIO $ mkSince mbrange mbsince
-                rankingAction mblimit since [] [mem] Nothing
+infixr 5 &
+(&) :: a -> a
+(&) = id
 
-        [capture|/ranking/:CabalType[library or executable]|] $ do
-            eqHeader "Accept" "application/json" . method GET
-            . document "get ranking par type."
-            . action $ \mblimit mbrange mbsince ct -> do
-                since <- liftIO $ mkSince mbrange mbsince
-                rankingAction mblimit since [] [] (Just ct)
+rankingAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts)
+              => Word -> Maybe Day -> [T.Text] -> [T.Text] -> Maybe CabalType -> ActionT exts m ()
+rankingAction limit mbsince cats mems typ = do
+    let filt = (if null cats then id else (["category" M.=: cats]:)) $
+               (if null mems then id else (["member"   M.=: mems]:)) $
+               case typ of
+                   Nothing         -> []
+                   Just Library    -> [["hasLibrary"  M.=: True]]
+                   Just Executable -> [["executables" M.=: ["$ne" M.=: ([] :: [T.Text])]]]
+    doc <- M.access . M.aggregate "packages" $
+        (if null cats && null mems && isNothing typ then id else (["$match" M.=: filt]:)) &
+        ["$project" M.=: [ "downloads" M.=: M.Int64 1
+                         , "name"      M.=: M.Int64 1
+                         ]] :
+        ["$unwind"  M.=: ("$downloads" :: T.Text)] :
+        maybe id (\s -> (
+        ["$match" M.=: ["downloads.date" M.=: ["$gt" M.=: M.UTC (UTCTime s 0)]]]:)) mbsince &
+        ["$group"   M.=: [ "_id"   M.=: ("$name" :: T.Text)
+                         , "total" M.=: ["$sum" M.=: ("$downloads.count" :: T.Text)]
+                         ]] :
+        ["$sort"    M.=: ["total" M.=: (-1 :: Int)]] :
+        ["$limit"   M.=: M.Int64 (fromIntegral limit)] : []
 
-    [capture|/package/:T.Text[package name]|] . method GET $ do
-        eqHeader "Accept" "application/json"
-            . document "get package information."
-            . action $ \pkg -> do
-                join . access $ do
-                    auth
-                    Mongo.findOne (Mongo.select ["package" Mongo.=: pkg] "cabal") >>= \case
-                        Nothing    -> return $
-                            status status404 >> bytes "unknown package" >> stop
-
-                        Just pinfo -> do
-                            ds <- Mongo.rest =<< Mongo.find 
-                                (Mongo.select ["package" Mongo.=: Mongo.valueAt "_id" pinfo] "downloads")
-                                {Mongo.project = [ "count" Mongo.=: Mongo.Int64 1
-                                                 , "date"  Mongo.=: Mongo.Int64 1
-                                                 ]}
-                            let ds' = map (Mongo.include ["date", "count"]) ds
-                            return $ do
-                                contentType "application/json"
-                                let doc = ("downloads" Mongo.=: ds') : pinfo
-                                lazyBytes . JSON.encode $ toAeson doc
-
-    [capture|/api/documentation|] . method GET . action $
-        defaultDocumentationAction def
-
-cabalFields :: [Mongo.Label]
-cabalFields = [ "homepage", "copyright", "category"
-              , "members", "maintainer", "version"
-              , "synopsis", "package", "has_library"
-              , "total", "stability", "author"
-              , "bugReports", "license", "executables"
-              , "description"
-              ]
-
-aggrSinceDateOids :: Maybe Day -> Maybe [Mongo.ObjectId] -> Mongo.Document
-aggrSinceDateOids mbsince mboids = [ "$match" Mongo.=:
-    (maybe id (\since -> (("date"    Mongo.=: ["$gte" Mongo.=: Mongo.UTC (UTCTime since 0)]):)) mbsince .
-     maybe id (\oids ->  (("package" Mongo.=: ["$in"  Mongo.=: oids]):)) mboids) []
-    ]
-
-aggrGroupByPackage :: Mongo.Document
-aggrGroupByPackage = [ "$group" Mongo.=:
-    [ "_id"   Mongo.=: Mongo.String "$package"
-    , "total" Mongo.=: ["$sum" Mongo.=: Mongo.String "$count"]
-    ] ]
-
-aggrSort :: Mongo.Document
-aggrSort = ["$sort" Mongo.=: ["total" Mongo.=: Mongo.Int64 (-1)]]
-
-aggrLimit :: Int -> Mongo.Document
-aggrLimit lim = ["$limit" Mongo.=: Mongo.Int64 (fromIntegral lim)]
+    showing doc
