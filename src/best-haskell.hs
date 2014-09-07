@@ -18,6 +18,7 @@ import Control.Monad.Trans.Control
 import Control.Applicative
 import Control.Exception
 
+import qualified Data.Aeson as A
 import Data.Word
 import Data.Maybe
 import Data.Char
@@ -60,6 +61,7 @@ serv app = do
     let mongoConf = def { M.mongoDBHost     = M.Host h (M.PortNumber $ fromIntegral p)
                         , M.mongoDBAuth     = Just (u, w)
                         , M.mongoDBDatabase = d
+                        , M.mongoDBTimeout  = 30
                         }
     serverWith (M.initMongoDB mongoConf) (run $ read port) app
 
@@ -87,14 +89,13 @@ main = serv $ runApiary def $ do
 
         [capture|/ranking|]
             . ("category" ?? "category filter."       =*: pText)
-            . ("member"   ?? "member filter."         =*: pText)
             . ("type"     ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType)) $ do
 
             accept "application/json" . method GET 
                 . document "get package download ranking."
-                . action $ \limit mbrange mbsince cats mems typ -> do
+                . action $ \limit mbrange mbsince cats typ -> do
                     since <- liftIO $ mkSince mbrange mbsince
-                    rankingAction limit since cats mems typ
+                    rankingAction limit since cats typ
 
 mkSince :: Maybe Word -> Maybe Day -> IO (Maybe Day)
 mkSince mbrange mbsince = case mbsince of
@@ -108,26 +109,49 @@ infixr 5 &
 (&) = id
 
 rankingAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts)
-              => Word -> Maybe Day -> [T.Text] -> [T.Text] -> Maybe CabalType -> ActionT exts m ()
-rankingAction limit mbsince cats mems typ = do
-    let filt = (if null cats then id else (["category" M.=: cats]:)) $
-               (if null mems then id else (["member"   M.=: mems]:)) $
-               case typ of
-                   Nothing         -> []
-                   Just Library    -> [["hasLibrary"  M.=: True]]
-                   Just Executable -> [["executables" M.=: ["$ne" M.=: ([] :: [T.Text])]]]
-    doc <- M.access . M.aggregate "packages" $
-        (if null cats && null mems && isNothing typ then id else (["$match" M.=: filt]:)) &
+              => Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> ActionT exts m ()
+rankingAction limit mbsince cats typ = do
+    doc <- M.access . M.aggregate "packages" $ aggrQuery limit mbsince cats typ
+    lazyBytes . A.encode $ map aggrToValue doc
+
+aggrToValue :: M.Document -> A.Value
+aggrToValue bson = A.object [ "name"     A..= (M.at "name"     bson :: T.Text)
+                            , "synopsis" A..= (M.at "synopsis" bson :: T.Text)
+                            , "author"   A..= (M.at "author"   bson :: T.Text)
+                            , "total"    A..= (M.at "total"    bson :: Int)
+                            ]
+
+aggrQuery :: Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> M.Pipeline
+aggrQuery limit mbsince cats typ = case mbsince of
+    Just since ->
+        (if null cats && isNothing typ then id else (["$match" M.=: filt]:)) &
         ["$project" M.=: [ "downloads" M.=: M.Int64 1
+                         , "synopsis"  M.=: M.Int64 1
+                         , "author"    M.=: M.Int64 1
                          , "name"      M.=: M.Int64 1
                          ]] :
-        ["$unwind"  M.=: ("$downloads" :: T.Text)] :
-        maybe id (\s -> (
-        ["$match" M.=: ["downloads.date" M.=: ["$gt" M.=: M.UTC (UTCTime s 0)]]]:)) mbsince &
-        ["$group"   M.=: [ "_id"   M.=: ("$name" :: T.Text)
-                         , "total" M.=: ["$sum" M.=: ("$downloads.count" :: T.Text)]
+        [ "$match"  M.=: ["downloads.date" M.=: ["$gt" M.=: M.UTC (UTCTime since 0)]]] :
+        [ "$unwind" M.=: ("$downloads" :: T.Text)] :
+        ["$group"   M.=: [ "_id"      M.=: ("$name" :: T.Text)
+                         , "name"     M.=: ["$first" M.=: ("$name"     :: T.Text)]
+                         , "synopsis" M.=: ["$first" M.=: ("$synopsis" :: T.Text)]
+                         , "author"   M.=: ["$first" M.=: ("$author"   :: T.Text)]
+                         , "total"    M.=: ["$sum"   M.=: ("$downloads.count" :: T.Text)]
                          ]] :
         ["$sort"    M.=: ["total" M.=: (-1 :: Int)]] :
         ["$limit"   M.=: M.Int64 (fromIntegral limit)] : []
-
-    showing doc
+    Nothing ->
+        (if null cats && isNothing typ then id else (["$match" M.=: filt]:)) &
+        ["$project" M.=: [ "total"    M.=: M.Int64 1
+                         , "synopsis" M.=: M.Int64 1
+                         , "author"   M.=: M.Int64 1
+                         , "name"     M.=: M.Int64 1
+                         ]] :
+        ["$sort"    M.=: ["total" M.=: (-1 :: Int)]] :
+        ["$limit"   M.=: M.Int64 (fromIntegral limit)] : []
+        
+  where
+    filt = (if null cats then id else (("category" M.=: cats):)) $ case typ of
+        Nothing         -> []
+        Just Library    -> ["hasLibrary"  M.=: True]
+        Just Executable -> ["executables" M.=: ["$ne" M.=: ([] :: [T.Text])]]
