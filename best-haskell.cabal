@@ -35,7 +35,9 @@ executable best-haskell
   build-depends:       base                 >=4.6  && <4.8
                      , warp                 >=3.0  && <3.1
                      , apiary               >=0.17 && <0.18
-                     , apiary-mongodb       >=0.17 && <0.18
+                     , apiary-mongoDB       >=0.17 && <0.18
+                     , apiary-memcached     >=0.17 && <0.18
+                     , memcached-binary     >=0.1  && <0.2
                      , time                 >=1.4  && <1.5
                      , monad-control        >=0.3  && <0.4
                      , process              >=1.2  && <1.3
