@@ -5,37 +5,34 @@ angular.module("bestHaskellApp", ['ngRoute'])
   $routeProvider
     .when('/', { templateUrl: 'view/index.html'
                , controller:  'IndexController'
-               })
+               });
 })
 .directive('rankingTable', function($http){
   return {
     restrict: 'E',
+    replace: true,
     templateUrl: 'view/rankingTable.html',
-    scope: true,
-    link: function(scope, element, attrs, controller){
-      $http.get(attrs.route)
-        .success(function(data){
-          console.log(data);
-          scope.ranking = data.ranking;
-          scope.caption = attrs.caption;
+    scope: {caption: '@', route: '@', ranking: '='},
+    link: function(scope){
+      if(scope.route) {
+        $http.get(scope.route).success(function(data){
+          scope.items = data.ranking;
         });
+      } else {
+        scope.$watch('ranking', function(v){
+          scope.items = scope.ranking;
+        });
+      }
     }
   }
 })
 .controller("IndexController", function($rootScope, $scope, $http){
   $rootScope.title     = "index";
-  $scope.range_start   = null;
-  $scope.range_end     = null;
-  $scope.package_count = null;
-
-  $http.get('/data/range')
-    .success(function(data){
-      $scope.range_start = data.start;
-      $scope.range_end   = data.end;
-    });
-
-  $http.get('/data/packages/count')
-    .success(function(data){
-      $scope.package_count = data;
-    });
-})
+  $http.get('/').success(function(data){
+    $scope.nPackages  = data.nPackages;
+    $scope.lastUpdate = data.lastUpdate;
+    $scope.total      = data.total.ranking;
+    $scope.weekly     = data.weekly.ranking;
+    $scope.monthly    = data.monthly.ranking;
+  });
+});

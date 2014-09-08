@@ -34,6 +34,7 @@ import Data.Time
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO       as T
+import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy  as L
 
@@ -125,7 +126,7 @@ main = serv $ runApiary def $ do
                 . document "get package download ranking."
                 . action $ \limit mbrange mbsince cats typ -> do
                     (st, ed) <- getDataStartEnd
-                    rankingAction st ed limit (mkSince (utctDay ed) mbrange mbsince) cats typ
+                    rankingAction st ed limit (mkSince (utctDay ed) mbrange mbsince) cats typ >>= lazyBytes
 
         [capture|/ranking/category/:T.Text|]
             . ("type"     ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType)) $ do
@@ -134,7 +135,7 @@ main = serv $ runApiary def $ do
                 . document "get package download ranking."
                 . action $ \limit mbrange mbsince cat typ -> do
                     (st, ed) <- getDataStartEnd
-                    rankingAction st ed limit (mkSince (utctDay ed) mbrange mbsince) [cat] typ
+                    rankingAction st ed limit (mkSince (utctDay ed) mbrange mbsince) [cat] typ >>= lazyBytes
 
     [capture|/categories|] . accept "application/json" . method GET . action $ categoriesAction
     [capture|/data/range|] . accept "application/json" . method GET . action $ do
@@ -144,6 +145,8 @@ main = serv $ runApiary def $ do
     [capture|/data/packages/count|] . accept "application/json" . method GET . action $
         showing =<< M.access (M.count $ M.select [] "packages")
 
+    [capture|/|] . accept "application/json" . method GET . action $ rootJsAction
+
     -- static files
     root                     . method GET . action $ file "static/index.html" Nothing
     [capture|/main.js|]      . method GET . action $ file "static/main.js" Nothing
@@ -152,6 +155,9 @@ main = serv $ runApiary def $ do
     -- other
     [capture|/nop|] . method GET . action $ bytes "nop\n"
     [capture|/api/documentation|] . method GET . action $ defaultDocumentationAction def
+    [capture|/flush|] . method GET . action $ do
+        _ <- C.memcached $ C.flushAll
+        bytes "flush"
 
 
 mkSince :: Day -> Maybe Word -> Maybe Day -> Maybe Day
@@ -190,19 +196,43 @@ getDataStartEnd = do
     return (M.at "value" st', M.at "value" ed')
 
 rankingAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts)
-              => UTCTime -> UTCTime -> Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> ActionT exts m ()
+              => UTCTime -> UTCTime -> Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> ActionT exts m L.ByteString
 rankingAction st ed limit mbsince cats typ = do
     let key = memcacheRankingKey st ed limit mbsince cats typ
     C.memcached (C.get_ key) >>= \case
-        Just ret -> lazyBytes ret
+        Just ret -> return ret
         Nothing  -> do
-            doc <- M.access $ M.aggregate "packages" (aggrQuery limit mbsince cats typ)
+            doc <- M.access $ rankingQuery limit mbsince cats typ
             let ret = A.encode $ A.object [ "ranking" A..= map aggrToValue doc
                                           , "start"   A..= fmap (max st . flip UTCTime 0) mbsince
                                           , "end"     A..= ed
                                           ]
             _ <- C.memcached $ C.set 0 0 key ret
+            return ret
+
+rootJsAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts)
+             => ActionT exts m ()
+rootJsAction = do
+    (st, ed) <- getDataStartEnd
+    let key = L.toStrict . B.runPut $
+              B.putByteString "t" >> B.put (toModifiedJulianDay $ utctDay ed)
+    C.memcached (C.get_ key) >>= \case
+        Just ret -> lazyBytes ret
+        Nothing  -> do
+            tot <- rankingAction st ed 10 Nothing [] Nothing
+            l1w <- rankingAction st ed 10 (Just $ addDays (-7)  $ utctDay ed) [] Nothing
+            l1m <- rankingAction st ed 10 (Just $ addDays (-28) $ utctDay ed) [] Nothing
+            n   <- M.access (M.count $ M.select [] "packages")
+            let ret = A.encode $ A.object
+                    [ "total"      A..= (A.decode tot :: Maybe A.Value)
+                    , "weekly"     A..= (A.decode l1w :: Maybe A.Value)
+                    , "monthly"    A..= (A.decode l1m :: Maybe A.Value)
+                    , "nPackages"  A..= n
+                    , "lastUpdate" A..= ed
+                    ]
+            _ <- C.memcached (C.set 0 0 key ret)
             lazyBytes ret
+
 
 categoriesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts)
                  => ActionT exts m ()
@@ -234,8 +264,8 @@ aggrToValue bson = A.object [ "name"     A..= (M.at "name"     bson :: T.Text)
                             , "total"    A..= (M.at "total"    bson :: Int)
                             ]
 
-aggrQuery :: Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> M.Pipeline
-aggrQuery limit mbsince cats typ = case mbsince of
+rankingQuery :: MonadIO m => Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> M.Action m [M.Document]
+rankingQuery limit mbsince cats typ = M.aggregate "packages" $ case mbsince of
     Just since ->
         (if null cats && isNothing typ then id else (["$match" M.=: filt]:)) &
         ["$project" M.=: [ "recent"    M.=: M.Int64 1
