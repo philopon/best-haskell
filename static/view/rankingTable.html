@@ -1,0 +1,15 @@
+<table class="table">
+  <caption>{{caption}}</caption>
+  <tr>
+    <th>#</th>
+    <th>name</th>
+    <th>author</th>
+    <th>count</th>
+  </tr>
+  <tr ng-repeat="item in ranking">
+    <td>{{$index + 1}}</td>
+    <td>{{item.name}}</td>
+    <td>{{item.author}}</td>
+    <td>{{item.total | number}}</td>
+  </tr>
+</table>

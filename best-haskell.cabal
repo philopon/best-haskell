@@ -34,6 +34,7 @@ executable best-haskell
   -- other-modules:       
   build-depends:       base                 >=4.6  && <4.8
                      , warp                 >=3.0  && <3.1
+                     , wai-extra            >=3.0  && <3.1
                      , apiary               >=0.17 && <0.18
                      , apiary-mongoDB       >=0.17 && <0.18
                      , apiary-memcached     >=0.17 && <0.18
@@ -52,7 +53,7 @@ executable index2json
   main-is:             src/index2json.hs
   build-depends:       base                 >=4.6  && <4.8
                      , best-haskell
-                     , mtl                  >=2.2  && <2.3
+                     , mtl                  >=2.1  && <2.3
                      , resourcet            >=1.1  && <1.2
                      , Cabal                >=1.20 && <1.21
                      , aeson                >=0.7  && <0.9

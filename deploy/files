@@ -3,3 +3,7 @@ deploy/package.json                    package.json
 scripts/execute.sh                     scripts/execute.sh
 /usr/lib/x86_64-linux-gnu/libgmp.so.10 libs/libgmp.so.10
 ./dist/build/best-haskell/best-haskell best-haskell
+static/index.html                      static/index.html
+static/main.js                         static/main.js
+static/view/index.html                 static/view/index.html
+static/view/rankingTable.html          static/view/rankingTable.html
