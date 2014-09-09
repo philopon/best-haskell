@@ -5,5 +5,7 @@ scripts/execute.sh                     scripts/execute.sh
 ./dist/build/best-haskell/best-haskell best-haskell
 static/index.html                      static/index.html
 static/main.js                         static/main.js
-static/view/index.html                 static/view/index.html
+static/main.css                        static/main.css
 static/view/rankingTable.html          static/view/rankingTable.html
+static/view/index.html                 static/view/index.html
+static/view/category.html              static/view/category.html
