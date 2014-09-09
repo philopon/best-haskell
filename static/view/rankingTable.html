@@ -1,15 +1,19 @@
-<table class="table">
+<table class="table ranking-table">
   <caption>{{caption}}</caption>
   <tr>
     <th>#</th>
     <th>name</th>
+    <th>category</th>
     <th>author</th>
     <th>count</th>
   </tr>
   <tr ng-repeat="item in items">
     <td>{{$index + 1}}</td>
-    <td>{{item.name}}</td>
-    <td>{{item.author}}</td>
+    <td class="name"><a ng-href="#/package/{{item.name}}">{{item.name}}</a></td>
+    <td class="category">
+      <a ng-href="#/category/{{cat}}" ng-repeat-start="cat in item.category">{{cat}}</a><span ng-repeat-end ng-if="!$last">, </span>
+    </td>
+    <td class="author">{{item.author}}</td>
     <td>{{item.total | number}}</td>
   </tr>
 </table>

@@ -1,5 +1,17 @@
-<a href="https://hackage.haskell.org/">Hackage</a> download ranking.
-hackage has {{nPackages}} packages as of {{lastUpdate | date:mediumDate }}.
+<div class="row">
+  <div class="page-header">
+    <h1 class="text-center">Best Haskell</h1>
+    <p class="text-center"><a href="https://hackage.haskell.org/">Hackage</a> download ranking.</p>
+    <p class="text-center">Hackage has {{nPackages}} packages as of {{lastUpdate | date:mediumDate }}.</p>
+  </div>
+</div>
 
-<ranking-table ranking='total'  caption='total downloads'></ranking-table>
-<ranking-table ranking='weekly' caption='last 1 week'></ranking-table>
+<div class="row">
+  <div class="col-md-6">
+    <ranking-table ranking='total'  caption='total downloads'></ranking-table>
+  </div>
+
+  <div class="col-md-6">
+    <ranking-table ranking='weekly' caption='last 1 week'></ranking-table>
+  </div>
+</div>

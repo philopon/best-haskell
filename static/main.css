@@ -1,0 +1,15 @@
+caption {
+  font-size: 18px;
+}
+
+.ranking-table .name {
+  white-space: nowrap;
+}
+
+.ranking-table .author {
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
