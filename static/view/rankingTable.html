@@ -8,12 +8,12 @@
     <th>count</th>
   </tr>
   <tr ng-repeat="item in items">
-    <td>{{$index + 1}}</td>
+    <td class="rank">{{$index + 1}}</td>
     <td class="name"><a ng-href="#/package/{{item.name}}">{{item.name}}</a></td>
     <td class="category">
-      <a ng-href="#/category/{{cat}}" ng-repeat-start="cat in item.category">{{cat}}</a><span ng-repeat-end ng-if="!$last">, </span>
+      <a ng-href="#/category/{{cat}}{{range ? '?range=' + range : ''}}" ng-repeat-start="cat in item.category">{{cat}}</a><span ng-repeat-end ng-if="!$last">, </span>
     </td>
     <td class="author">{{item.author}}</td>
-    <td>{{item.total | number}}</td>
+    <td class="count">{{item.total | number}}</td>
   </tr>
 </table>
