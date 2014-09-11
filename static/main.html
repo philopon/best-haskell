@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
     <link rel="stylesheet" href="/main.css">
+    <script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
     <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.3.0-rc.0/angular.min.js"></script>
     <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.3.0-rc.0/angular-route.min.js"></script>
     <script src="/main.js"></script>
@@ -13,10 +14,22 @@
   <body>
     <nav class="navbar navbar-default" role="navigation">
       <a class="navbar-brand" href="#">BestHaskell</a>
+      <form class="navbar-form navbar-right" role="search">
+        <input type="text" class="form-control" placeholder="package name">
+        <button type="submit" class="btn btn-default"><span class="glyphicon glyphicon-search"></span></button>
+      </form>
+      <ul class="nav navbar-nav navbar-right">
+        <li><a href="#/new">new</a></li>
+        <li><a href="/api/documentation">API</a></li>
+      </ul>
     </nav>
 
     <div class="container">
       <div ng-view></div>
     </div>
+
+    <footer>
+      This site provided by <a href="https://github.com/philopon/apiary">apiary</a> web framework.
+    </footer>
   </body>
 </html>
