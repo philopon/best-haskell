@@ -28,7 +28,7 @@ import Control.Concurrent
 import qualified Data.Binary as B
 import qualified Data.Binary.Put as B
 import qualified Data.Aeson as A
-import Data.Abson
+import Data.Abeson
 import Data.Apiary.Extension
 import Data.Word
 import Data.Maybe
