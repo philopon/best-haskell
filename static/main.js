@@ -242,16 +242,20 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
     $scope.lastUpdate = data.lastUpdate;
     $scope.total      = data.total.ranking;
     $scope.weekly     = data.weekly.ranking;
-    $scope.monthly    = data.monthly.ranking;
+    $scope.new        = data.new.ranking;
   });
 }) // }}}
 .controller("CategoryController", function($rootScope, $scope, $routeParams, $http){ // {{{
   var cat = $routeParams.category;
   $scope.category = cat;
   $rootScope.title = "Category:" + cat;
-  $http({method: "GET", url: '/ranking', params: {category: cat}})
+  $http({method: "GET", url: '/', params: {category: cat}})
     .success(function(data){
-      $scope.ranking = data.ranking;
+      $scope.nPackages  = data.nPackages;
+      $scope.lastUpdate = data.lastUpdate;
+      $scope.total      = data.total.ranking;
+      $scope.weekly     = data.weekly.ranking;
+      $scope.new        = data.new.ranking;
     });
 }) // }}}
 .controller('PackageController', function($rootScope, $scope, $routeParams, $http){ // {{{

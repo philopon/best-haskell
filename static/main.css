@@ -13,17 +13,12 @@ caption {
 
 .ranking-table .rank {
   text-align: right;
+  width: 2em;
 }
 
 .ranking-table .name {
   white-space: nowrap;
-}
-
-.ranking-table .author {
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: 150px;
 }
 
 .ranking-table .count {

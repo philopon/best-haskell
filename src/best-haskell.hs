@@ -8,6 +8,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
 import System.Environment
+import System.FilePath
 import System.Process
 import System.Exit
 
@@ -31,7 +32,6 @@ import qualified Data.Aeson as A
 import Data.Abeson
 import Data.Apiary.Extension
 import Data.Word
-import Data.Maybe
 import Data.Char
 import Data.Typeable
 import Data.Time
@@ -129,15 +129,16 @@ instance Query CabalType where
 main :: IO ()
 main = serv $ runApiary def $ do
     -- install middlewares
-    --middleware $ gzip def
-    --middleware autohead
+    middleware $ gzip def
+    middleware autohead
 
     -- API
 
     -- global options
     ("limit" ?? "number to fetch ranking."                     =?!: (10 :: Word))
         . ("range" ?? "days of aggregation."                   =?:  pWord)
-        . ("since" ?? "date of aggregation. instead of range." =?:  (Proxy :: Proxy Day)) $ do
+        . ("since" ?? "date of aggregation. instead of range." =?:  (Proxy :: Proxy Day))
+        . switchQuery ("new" ?? "new package only") $ do
 
         -- /ranking most generic ranking api 
         [capture|/ranking|]
@@ -146,29 +147,20 @@ main = serv $ runApiary def $ do
 
             accept "application/json" . method GET 
                 . document "get package download ranking."
-                . action $ \limit mbrange mbsince cats typ -> do
+                . action $ \limit mbrange mbsince new cats typ -> do
                     (st, ed) <- getDataStartEnd
-                    rankingAction st ed limit (mkSince (utctDay ed) mbrange mbsince) cats typ >>= lazyBytes
+                    rankingAction st ed limit (mkSince (utctDay ed) mbrange mbsince) new cats typ >>= lazyBytes
 
-        -- /ranking/category/:category category specific raanking api
-        [capture|/ranking/category/:T.Text|]
-            . ("type"     ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType)) $ do
+    [capture|/categories|] . accept "application/json" . method GET
+        . document "list of categories." . action $ categoriesAction
 
-            accept "application/json" . method GET 
-                . document "get package download ranking."
-                . action $ \limit mbrange mbsince cat typ -> do
-                    (st, ed) <- getDataStartEnd
-                    rankingAction st ed limit (mkSince (utctDay ed) mbrange mbsince) [cat] typ >>= lazyBytes
-
-    -- /categories list up category
-    [capture|/categories|] . accept "application/json" . method GET . action $ categoriesAction
-
-    [capture|/package/:T.Text|] . accept "application/json" . method GET . action $ \pkg ->
-        M.access (M.findOne (M.select ["name" M.=: pkg] "packages") {
-            M.project = ["_id" M.=: (0::Int), "recent" M.=: (0::Int)]
-            }) >>= \case
-            Nothing -> status status404 >> bytes "package not found." >> stop
-            Just p  -> lazyBytes . A.encode $ toAeson def p
+    [capture|/package/:T.Text[package name]|] . accept "application/json" . method GET
+        . document "package information" . action $ \pkg ->
+            M.access (M.findOne (M.select ["name" M.=: pkg] "packages") {
+                M.project = ["_id" M.=: (0::Int), "recent" M.=: (0::Int)]
+                }) >>= \case
+                Nothing -> status status404 >> bytes "package not found." >> stop
+                Just p  -> lazyBytes . A.encode $ toAeson def p
 
     -- /flush flushAll memcached
     ac <- apiaryExt (Proxy :: Proxy AppConfig)
@@ -177,16 +169,14 @@ main = serv $ runApiary def $ do
         bytes "flush"
 
     -- / all information used in root page.
-    [capture|/|] . accept "application/json" . method GET . action $ rootJsAction
+    [capture|/|] . accept "application/json" . method GET . ("category" =*: pText) . action $ rankingApiAction
 
     -- static files
-    root                     . method GET . action $ file "static/main.html"         Nothing
-    [capture|/view/:String|] . method GET . action $ \f -> file ("static/view/" ++ f) Nothing
-    [capture|/img/:String|]  . method GET . action $ \f -> file ("static/img/"  ++ f) Nothing
-    [capture|/:String|]      . method GET . action $ \f -> file ("static/"      ++ f) Nothing
+    root           . method GET . action $ file "static/main.html"          Nothing
+    [capture|/**|] . method GET . action $ \f -> file (joinPath $ "static" : map T.unpack f) Nothing
 
     -- other
-    [capture|/nop|] . method GET . action $ bytes "nop\n"
+    [capture|/nop|] . method GET . document "no operation to keep wake up on heroku." . action $ bytes "nop\n"
     [capture|/api/documentation|] . method GET . action $ defaultDocumentationAction def
 
 mkSince :: Day -> Maybe Word -> Maybe Day -> Maybe Day
@@ -200,13 +190,14 @@ infixr 5 &
 (&) :: a -> a
 (&) = id
 
-memcacheRankingKey :: UTCTime -> UTCTime -> Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> S8.ByteString
-memcacheRankingKey (UTCTime st _) (UTCTime ed _) lim mbsince cat typ = L.toStrict . B.runPut $ do
+memcacheRankingKey :: UTCTime -> UTCTime -> Word -> Maybe Day -> Bool -> [T.Text] -> Maybe CabalType -> S8.ByteString
+memcacheRankingKey (UTCTime st _) (UTCTime ed _) lim mbsince new cat typ = L.toStrict . B.runPut $ do
     B.putByteString "r"
     B.put (toModifiedJulianDay st)
     B.put (toModifiedJulianDay ed)
     B.put lim
     B.put (maybe 0 toModifiedJulianDay mbsince)
+    B.put new
     mapM_ (B.put . T.encodeUtf8) cat
     B.put $ case typ of { Nothing -> 0; Just Library -> 1; Just Executable -> (2::Word8) }
 
@@ -244,36 +235,35 @@ cache key a = do
             return r
 
 rankingAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts)
-              => UTCTime -> UTCTime -> Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> ActionT exts m L.ByteString
-rankingAction st ed limit mbsince cats typ = do
-    let key = memcacheRankingKey st ed limit mbsince cats typ
+              => UTCTime -> UTCTime -> Word -> Maybe Day -> Bool -> [T.Text] -> Maybe CabalType -> ActionT exts m L.ByteString
+rankingAction st ed limit mbsince new cats typ = do
+    let key = memcacheRankingKey st ed limit mbsince new cats typ
     cache key $ do
-        doc <- M.access $ rankingQuery limit mbsince cats typ
+        doc <- M.access $ rankingQuery (utctDay ed) limit mbsince new cats typ
         return . A.encode $ A.object [ "ranking" A..= map (toAeson def . filter (\(l M.:= _) -> l /= "_id")) doc
                                      , "start"   A..= fmap (max st . flip UTCTime 0) mbsince
                                      , "end"     A..= ed
                                      ]
 
-rootJsAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts)
-             => ActionT exts m ()
-rootJsAction = do
+rankingApiAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts)
+                 => [T.Text] -> ActionT exts m ()
+rankingApiAction cats = do
     (st, ed) <- getDataStartEnd
     let key = L.toStrict . B.runPut $
-              B.putByteString "t" >> B.put (toModifiedJulianDay $ utctDay ed)
+              B.putByteString "t" >> mapM_ (B.put . T.encodeUtf8) cats >> B.put (toModifiedJulianDay $ utctDay ed)
     r <- cache key $ do
-        tot <- rankingAction st ed 10 Nothing [] Nothing
-        l1w <- rankingAction st ed 10 (Just $ addDays (-7)  $ utctDay ed) [] Nothing
-        l1m <- rankingAction st ed 10 (Just $ addDays (-28) $ utctDay ed) [] Nothing
-        n   <- M.access (M.count $ M.select [] "packages")
+        tot <- rankingAction st ed 10 Nothing False cats Nothing
+        l1w <- rankingAction st ed 10 (Just $ addDays (-7)  $ utctDay ed) False cats Nothing
+        new <- rankingAction st ed 10 Nothing True  cats Nothing
+        n   <- M.access (M.count $ M.select (if null cats then [] else ["category" M.=: ["$in" M.=: cats]]) "packages")
         return . A.encode $ A.object
                 [ "total"      A..= (A.decode tot :: Maybe A.Value)
                 , "weekly"     A..= (A.decode l1w :: Maybe A.Value)
-                , "monthly"    A..= (A.decode l1m :: Maybe A.Value)
+                , "new"        A..= (A.decode new :: Maybe A.Value)
                 , "nPackages"  A..= n
                 , "lastUpdate" A..= ed
                 ]
     lazyBytes r
-
 
 categoriesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
                  => ActionT exts m ()
@@ -295,10 +285,10 @@ categoriesAction = do
                       , "count"    A..= (M.at "count" b :: Int)
                       ]
 
-rankingQuery :: MonadIO m => Word -> Maybe Day -> [T.Text] -> Maybe CabalType -> M.Action m [M.Document]
-rankingQuery limit mbsince cats typ = M.aggregate "packages" $ case mbsince of
+rankingQuery :: MonadIO m => Day -> Word -> Maybe Day -> Bool -> [T.Text] -> Maybe CabalType -> M.Action m [M.Document]
+rankingQuery ed limit mbsince new cats typ = M.aggregate "packages" $ case mbsince of
     Just since ->
-        (if null cats && isNothing typ then id else (["$match" M.=: filt]:)) &
+        (if null filt then id else (["$match" M.=: filt]:)) &
         ["$project" M.=: [ "recent"    M.=: M.Int64 1
                          , "synopsis"  M.=: M.Int64 1
                          , "author"    M.=: M.Int64 1
@@ -317,7 +307,7 @@ rankingQuery limit mbsince cats typ = M.aggregate "packages" $ case mbsince of
         ["$sort"    M.=: ["total" M.=: (-1 :: Int)]] :
         ["$limit"   M.=: M.Int64 (fromIntegral $ min 100 limit)] : []
     Nothing ->
-        (if null cats && isNothing typ then id else (["$match" M.=: filt]:)) &
+        (if null filt then id else (["$match" M.=: filt]:)) &
         ["$project" M.=: [ "total"    M.=: M.Int64 1
                          , "synopsis" M.=: M.Int64 1
                          , "author"   M.=: M.Int64 1
@@ -328,7 +318,9 @@ rankingQuery limit mbsince cats typ = M.aggregate "packages" $ case mbsince of
         ["$limit"   M.=: M.Int64 (fromIntegral limit)] : []
         
   where
-    filt = (if null cats then id else (("category" M.=: ["$in" M.=: cats]):)) $ case typ of
-        Nothing         -> []
-        Just Library    -> ["hasLibrary"  M.=: True]
-        Just Executable -> ["executables" M.=: ["$ne" M.=: ([] :: [T.Text])]]
+    filt = (if null cats then id else (("category"       M.=: ["$in" M.=: cats]):)) $
+           (if not  new  then id else (("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) ed) 0]):)) $
+        case typ of
+            Nothing         -> []
+            Just Library    -> ["hasLibrary"  M.=: True]
+            Just Executable -> ["executables" M.=: ["$ne" M.=: ([] :: [T.Text])]]
