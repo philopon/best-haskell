@@ -6,8 +6,11 @@ scripts/execute.sh                     scripts/execute.sh
 static/main.html                       static/main.html
 static/main.js                         static/main.js
 static/main.css                        static/main.css
+static/favicon.ico                     static/favicon.ico
+static/img/ajax-loader.gif             static/img/ajax-loader.gif
 static/view/rankingTable.html          static/view/rankingTable.html
 static/view/index.html                 static/view/index.html
-static/view/category.html              static/view/category.html
-static/img/ajax-loader.gif             static/img/ajax-loader.gif
 static/view/package.html               static/view/package.html
+static/view/category.html              static/view/category.html
+static/view/categories.html            static/view/categories.html
+static/view/search.html                static/view/search.html
