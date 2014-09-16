@@ -321,7 +321,7 @@ rankingQuery ed limit pkg mbsince new cats typ = M.aggregate "packages" $ case m
         
   where
     filt = (if null cats then id else (("category"       M.=: ["$in" M.=: cats]):)) $
-           (case pkg of {Nothing -> id; Just p -> (("name" M.=: M.Regex p ""):)}) $
+           (case pkg of {Nothing -> id; Just p -> (("name" M.=: M.Regex p "i"):)}) $
            (if not  new  then id else (("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) ed) 0]):)) $
         case typ of
             Nothing         -> []
