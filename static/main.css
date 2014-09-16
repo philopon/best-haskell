@@ -17,7 +17,6 @@ caption {
 }
 
 .ranking-table .name {
-  white-space: nowrap;
   width: 150px;
 }
 
@@ -88,3 +87,11 @@ img.loading {
   font-size: 12px;
 }
 /* download chart }}} */
+
+#categories a {
+  text-decoration: none;
+}
+
+#categories a span {
+  color: #999;
+}

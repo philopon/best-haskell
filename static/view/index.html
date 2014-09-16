@@ -1,23 +1,32 @@
-<div class="row">
-  <div class="page-header">
-    <h1 class="text-center">Best Haskell</h1>
-    <p class="text-center"><a href="https://hackage.haskell.org/">Hackage</a> download ranking.</p>
-    <p class="text-center">Hackage has {{nPackages}} packages as of {{lastUpdate | date:mediumDate }}.</p>
+<div class="page-header">
+  <h1 class="text-center">Best Haskell</h1>
+  <p class="text-center"><a href="https://hackage.haskell.org/">Hackage</a> download ranking.</p>
+  <p ng-if="nPackages && lastUpdate" class="text-center">Hackage has {{nPackages}} packages as of {{lastUpdate | date:mediumDate }}.</p>
+</div>
+
+<div ng-if="complete && !error">
+  <div class="row">
+    <div class="col-sm-12 col-md-6">
+      <ranking-table ranking='total'  caption='total downloads'></ranking-table>
+    </div>
+
+    <div class="col-sm-12 col-md-6">
+      <ranking-table ranking='weekly' caption='last 1 week'></ranking-table>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-sm-12 col-md-6">
+      <ranking-table ranking='new' caption='new packages'></ranking-table>
+    </div>
   </div>
 </div>
 
-<div class="row">
-  <div class="col-sm-12 col-md-6">
-    <ranking-table ranking='total'  caption='total downloads'></ranking-table>
-  </div>
-
-  <div class="col-sm-12 col-md-6">
-    <ranking-table ranking='weekly' caption='last 1 week'></ranking-table>
-  </div>
+<div ng-if="complete && error">
+  <h1>{{error.title}}</h1>
+  <p>{{error.description}}</p>
 </div>
 
-<div class="row">
-  <div class="col-sm-12 col-md-6">
-    <ranking-table ranking='new' caption='new packages'></ranking-table>
-  </div>
+<div ng-if="!complete" class="center-block text-center">
+  <img class="loading" src='/img/ajax-loader.gif'>
 </div>

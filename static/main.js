@@ -14,7 +14,16 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
     .when('/category/:category*', {
       templateUrl: 'view/category.html',
       controller:  'CategoryController'
-    });
+    })
+    .when('/categories', {
+      templateUrl: 'view/categories.html',
+      controller: 'CategoriesController'
+    })
+    .when('/search/:query*', {
+      templateUrl: 'view/search.html',
+      controller:  'SearchController'
+    })
+    .otherwise({ redirectTo: '/' });
 }) // }}}
 .directive('rankingTable', function(){ // {{{
   return {
@@ -36,13 +45,14 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
     scope: {downloads: '=', height: '@'},
     link: function($scope, $elems){
       function getScopeSize() {
-        var width = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
-        if      (width >= 1200) {width = 1170}
-        else if (width >=  992) {width =  970}
-        else if (width >=  768) {width =  750}
-        width -= 50;
-
-        return {width: width, height: width * 9/16};
+        var svgwidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+        if      (svgwidth >= 1200) {svgwidth = 1170}
+        else if (svgwidth >=  992) {svgwidth =  970}
+        else if (svgwidth >=  768) {svgwidth =  750}
+        svgwidth -= 20;
+        var width = svgwidth >= 768 ? svgwidth : 730;
+        var scale = svgwidth / width;
+        return {width: width, height: width * 9/16, svgwidth: svgwidth, svgheight: svgwidth * 9/16, scale: scale};
       }
       var size = getScopeSize();
 
@@ -57,11 +67,11 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
       var width  = size.width  - margin.left - margin.right;
 
       var svg = d3.select($elems[0]).append('svg')
-          .attr('width',  size.width)
-          .attr('height', size.height);
+          .attr('width',  size.svgwidth)
+          .attr('height', size.svgheight);
 
       var plotarea = svg.append('g')
-          .attr('transform', "translate(" + margin.left + "," + margin.top + ")");
+          .attr('transform', "scale(" + size.scale + ',' + size.scale + ') translate(' + margin.left + "," + margin.top + ")" );
 
       var x  = d3.time.scale().range([0, width]);
       var yt = d3.time.scale().range([height, 0]);
@@ -132,7 +142,8 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
         var size = getScopeSize();
         var width  = size.width  - margin.left - margin.right;
         var height = size.height - margin.top  - margin.bottom;
-        svg.attr('width', size.width).attr('height', size.height);
+        svg.attr('width', size.svgwidth).attr('height', size.svgheight);
+        plotarea.attr('transform', "scale(" + size.scale + ',' + size.scale + ') translate(' + margin.left + "," + margin.top + ")" );
         x.range([0, width]);
         yt.range([height, 0]);
         yc.range([height, 0]);
@@ -157,7 +168,7 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
         svg.select('.line.count').attr('d', count);
         svg.select('.line.total').attr('d', total);
       }
-      window.onresize = updateWindow;
+      $(window).on('orientationchange resize', updateWindow);
 
       var cursor_initialized = false;
       function cursorVisible (vis) {
@@ -166,10 +177,11 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
       }
 
       function mouseMove () {
+        var size = getScopeSize();
         var mouse = d3.mouse(this);
+        mouse = [mouse[0] / size.scale, mouse[1] / size.scale];
         var mx    = mouse[0] - margin.left;
 
-        var size = getScopeSize();
         var width  = size.width  - margin.left - margin.right;
         var height = size.height - margin.top  - margin.bottom;
         if (mx < 0 || mx > width || mouse[1] > height + margin.top || mouse[1] < margin.top) { cursorVisible(false); return }
@@ -238,11 +250,18 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
 .controller("IndexController", function($rootScope, $scope, $http){ // {{{
   $rootScope.title     = "index";
   $http.get('/').success(function(data){
+    $scope.complete   = true;
     $scope.nPackages  = data.nPackages;
     $scope.lastUpdate = data.lastUpdate;
     $scope.total      = data.total.ranking;
     $scope.weekly     = data.weekly.ranking;
     $scope.new        = data.new.ranking;
+  }).error(function(data, status){
+    $scope.complete = true;
+    $scope.error = {
+      title: status,
+      description: data
+    }
   });
 }) // }}}
 .controller("CategoryController", function($rootScope, $scope, $routeParams, $http){ // {{{
@@ -251,19 +270,26 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
   $rootScope.title = "Category:" + cat;
   $http({method: "GET", url: '/', params: {category: cat}})
     .success(function(data){
+      $scope.complete   = true;
       $scope.nPackages  = data.nPackages;
       $scope.lastUpdate = data.lastUpdate;
       $scope.total      = data.total.ranking;
       $scope.weekly     = data.weekly.ranking;
       $scope.new        = data.new.ranking;
+    }).error(function(data, status){
+      $scope.complete = true;
+      $scope.error = {
+        title: status,
+        description: data
+      }
     });
 }) // }}}
 .controller('PackageController', function($rootScope, $scope, $routeParams, $http){ // {{{
+  $scope.name = $routeParams.package;
   $http.get('/package/' + $routeParams.package).success(function(data){
     for(var i = 0; i < data.downloads.length; i++){
       data.downloads[i].date  = new Date(data.downloads[i].date);
     }
-    $scope.error          = null;
     $scope.complete       = true;
     $scope.author         = data.author;
     $scope.bugReports     = data.bugReports;
@@ -293,3 +319,44 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
     }
   });
 }) // }}}
+.controller('CategoriesController', function($rootScope, $scope, $http){ // {{{
+  $rootScope.title = "categories";
+  $http.get('/categories').success(function(data){
+    $scope.complete   = true;
+    $scope.categories = data.categories;
+    var max = 0;
+    for(var i = 0; i < data.categories.length; i++){
+      max = Math.max(max, data.categories[i].count);
+    }
+    $scope.fsFun = function(c) {
+      return 14 + Math.log(c) / Math.log(max) * 36;
+    }
+  })
+  .error(function(data, status){
+    $scope.complete = true;
+    $scope.error = {
+      title: status,
+      description: data
+    }
+  });
+}) // }}}
+.controller('NavbarController', function($scope, $location){ // {{{
+  $scope.submit = function(){
+    $location.path('/search/' + $scope.query);
+  };
+}) // }}}
+.controller('SearchController', function($rootScope, $routeParams, $scope, $http){
+  $rootScope.title = "Search:" + $routeParams.query;
+  $scope.query = $routeParams.query;
+  $http({method: 'GET', url: '/ranking', params: {q: $scope.query, limit: 100}}).success(function(data){
+    $scope.complete = true;
+    $scope.result = data.ranking;
+  })
+  .error(function(data, status){
+    $scope.complete = true;
+    $scope.error = {
+      title: status,
+      description: data
+    }
+  });
+});
