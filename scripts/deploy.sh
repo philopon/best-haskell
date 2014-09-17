@@ -28,3 +28,5 @@ git push -f heroku deploy:master
 git checkout -f $branch
 
 git branch -D deploy
+rm -r bower_components
+bower install
