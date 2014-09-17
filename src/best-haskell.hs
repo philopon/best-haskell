@@ -132,7 +132,7 @@ main = serv $ runApiary def $ do
     -- other
     [capture|/nop|] . method GET . document "no operation to keep wake up on heroku." . action $ bytes "nop\n"
     [capture|/api/documentation|] . method GET . action $
-        defaultDocumentationAction def { documentGoogleAnalytics = Just "UA-48784415-3" }
+        defaultDocumentationAction def { documentGoogleAnalytics = Just "UA-48784415-4" }
 
 mkSince :: Day -> Maybe Word -> Maybe Day -> Maybe Day
 mkSince end mbrange mbsince = case mbsince of
