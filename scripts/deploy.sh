@@ -9,6 +9,9 @@ cabal build exe:best-haskell
 
 git checkout --orphan deploy
 git rm --cached -r .
+rm -r bower_components
+rm .gitignore
+bower install
 
 while read line; do
   set -a array

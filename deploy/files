@@ -14,5 +14,6 @@ static/view/package.html               static/view/package.html
 static/view/category.html              static/view/category.html
 static/view/categories.html            static/view/categories.html
 static/view/search.html                static/view/search.html
+static/bower_components                static/bower_components
 bower_components/angulartics/dist/angulartics.min.js    bower_components/angulartics/dist/angulartics.min.js 
 bower_components/angulartics/dist/angulartics-ga.min.js bower_components/angulartics/dist/angulartics-ga.min.js 
