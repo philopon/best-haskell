@@ -1,7 +1,7 @@
 'use strict';
 
 angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.analytics']) // {{{
-.config(function($routeProvider){
+.config(function($routeProvider, $analyticsProvider){
   $routeProvider
     .when('/', {
       templateUrl: 'view/index.html',
