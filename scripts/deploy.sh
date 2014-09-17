@@ -9,6 +9,7 @@ cabal build exe:best-haskell
 
 git checkout --orphan deploy
 git rm --cached -r .
+rm .gitignore
 
 while read line; do
   set -a array
