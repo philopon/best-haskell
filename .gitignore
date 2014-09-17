@@ -2,3 +2,5 @@
 *.swp
 cabal.sandbox.config
 dist
+node_modules
+tmpdata
