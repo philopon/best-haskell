@@ -6,16 +6,16 @@
 
 <div ng-if="complete && !error">
   <div class="row">
-    <div class="col-sm-12 col-md-6">
-      <ranking-table ranking='total'  caption='total downloads'></ranking-table>
-    </div>
-
-    <div class="col-sm-12 col-md-6">
-      <ranking-table ranking='weekly' caption='last 1 week'></ranking-table>
+    <div class="col-sm-12 col-md-12">
+      <ranking-table ranking='total' author="true" caption='total downloads'></ranking-table>
     </div>
   </div>
 
-  <div class="row">
+  <div class="row small-ranking-table">
+    <div class="col-sm-12 col-md-6">
+      <ranking-table ranking='weekly' caption='last 1 week'></ranking-table>
+    </div>
+
     <div class="col-sm-12 col-md-6">
       <ranking-table ranking='new' caption='new packages'></ranking-table>
     </div>

@@ -7,12 +7,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
-import System.Environment
 import System.FilePath
-import System.Process
-import System.Exit
 
 import Web.Apiary
+import Web.Apiary.Heroku
 import Network.Wai.Middleware.Gzip
 import Network.Wai.Middleware.Autohead
 import Network.Wai.Handler.Warp
@@ -23,7 +21,6 @@ import qualified Database.Memcached.Binary.Maybe as C
 import Control.Monad
 import Control.Monad.Trans.Control
 import Control.Applicative
-import Control.Exception
 import Control.Concurrent
 
 import qualified Data.Binary as B
@@ -37,49 +34,8 @@ import Data.Typeable
 import Data.Time
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.IO       as T
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy  as L
-
--- | database configuration
--- if mongoEnvName/memcachedenvprefix environment variable exists, get it,
--- else heroku config:get env --app herokuAppName.
-herokuAppName, mongoEnvName, memcachedEnvPrefix :: String
-herokuAppName      = "best-haskell"
-mongoEnvName       = "MONGOHQ_URL"
-memcachedEnvPrefix = "MEMCACHIER"
-
-getHerokuConfig :: String -> IO T.Text
-getHerokuConfig key = do
-    (_, Just stdout, _, h) <- createProcess
-        (proc "heroku" ["config:get", key, "--app", herokuAppName]) {std_out = CreatePipe}
-    xc <- waitForProcess h
-    if xc == ExitSuccess
-        then T.hGetLine stdout
-        else fail "heroku command failure."
-
-getEnvOrHerokuConfig :: String -> IO T.Text
-getEnvOrHerokuConfig ev = handle (\(_::SomeException) -> getHerokuConfig ev) $ T.pack <$> getEnv ev
-
-getMongoDBConfig :: String -> IO (T.Text, T.Text, String, Int, T.Text)
-getMongoDBConfig ev = do
-    s0 <- getEnvOrHerokuConfig ev
-    let (_,      s1)    = T.breakOnEnd "://" s0
-        (user,   s2) = T.break (== ':') s1
-        (passwd, s3) = T.break (== '@') (T.tail s2)
-        (host_,  s4) = T.break (== ':') (T.tail s3)
-        (port,   s5) = T.break (== '/') (T.tail s4)
-    return (user, passwd, T.unpack host_, read $ T.unpack port, (if T.null s5 then id else T.tail) s5)
-
-getMemcachedConfig' :: String -> IO (T.Text, Int, T.Text, T.Text)
-getMemcachedConfig' evpfx = do
-    (s,p) <- T.break (== ':') <$> getEnvOrHerokuConfig (evpfx ++ "_SERVERS")
-    usr   <- getEnvOrHerokuConfig (evpfx ++ "_USERNAME")
-    pwd   <- getEnvOrHerokuConfig (evpfx ++ "_PASSWORD")
-    return (s, read $ T.unpack $ T.tail p, usr, pwd)
-
-getMemcachedConfig :: IO (T.Text, Int, T.Text, T.Text)
-getMemcachedConfig = getMemcachedConfig' memcachedEnvPrefix
 
 -- | global application config
 data AppConfig = AppConfig { flushHandlerEnable :: Bool
@@ -88,28 +44,18 @@ data AppConfig = AppConfig { flushHandlerEnable :: Bool
                            }
 
 -- | set configuration and run server with extensions.
-serv :: (Extensions '[AppConfig, C.Memcached, M.MongoDB] -> IO Application) -> IO ()
+serv :: (Extensions '[AppConfig, C.Memcached, M.MongoDB, Heroku] -> IO Application) -> IO ()
 serv app = do
-    port:_ <- getArgs
-    (mu,mw,mh,mp,md) <- getMongoDBConfig mongoEnvName
-    (cs, cp, cu, cw) <- getMemcachedConfig
-    let mongoConf = def { M.mongoDBHost       = M.Host mh (M.PortNumber $ fromIntegral mp)
-                        , M.mongoDBAuth       = Just (mu, mw)
-                        , M.mongoDBDatabase   = md
-                        , M.mongoDBTimeout    = 30
+    let mongoConf = def { M.mongoDBTimeout    = 30
                         , M.mongoDBAccessMode = M.slaveOk
                         , M.numConnection     = 10
                         }
         mcConf    = def { C.cacheConfig = Just def
-                        , C.connectInfo = def {
-                            C.connectHost   = T.unpack cs
-                            , C.connectPort   = C.PortNumber $ fromIntegral cp
-                            , C.connectAuth   = [C.Plain (T.encodeUtf8 cu) (T.encodeUtf8 cw)]
-                            , C.numConnection = 10
-                            }
+                        , C.connectInfo = def { C.numConnection = 10 }
                         }
-    ac <- AppConfig True (600 * 10^(6::Int)) <$> newEmptyMVar
-    serverWith (M.initMongoDB mongoConf +> C.initMemcached mcConf +> initializer (return ac)) (run $ read port) app
+    ac <- AppConfig False (600 * 10^(6::Int)) <$> newEmptyMVar
+    herokuWith (M.initHerokuMongoDB mongoConf +> C.initHerokuMemcached mcConf +> initializer' (return ac))
+        run def { herokuAppName = Just "best-haskell" } app
 
 -- | cabal type (Executable|Library) for query.
 data CabalType = Executable | Library deriving (Typeable, Show)

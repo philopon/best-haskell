@@ -95,3 +95,7 @@ img.loading {
 #categories a span {
   color: #999;
 }
+
+.small-ranking-table .author {
+  display: none !important;
+}

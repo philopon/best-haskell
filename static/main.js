@@ -345,7 +345,7 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
     $location.path('/search/' + $scope.query);
   };
 }) // }}}
-.controller('SearchController', function($rootScope, $routeParams, $scope, $http){
+.controller('SearchController', function($rootScope, $routeParams, $scope, $http){ // {{{
   $rootScope.title = "Search:" + $routeParams.query;
   $scope.query = $routeParams.query;
   $http({method: 'GET', url: '/ranking', params: {q: $scope.query, limit: 100}}).success(function(data){
@@ -359,4 +359,4 @@ angular.module("bestHaskellApp", ['ngRoute']) // {{{
       description: data
     }
   });
-});
+}); // }}}
