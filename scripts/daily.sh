@@ -2,7 +2,7 @@
 
 set -e
 
-eval `heroku config -s --app best-haskell`
+eval `heroku config -s --app best-haskell | awk '{print "export", $0}'`
 
 URI="https://hackage.haskell.org"
 TMP=./tmpdata
