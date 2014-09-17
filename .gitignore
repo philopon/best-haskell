@@ -4,3 +4,4 @@ cabal.sandbox.config
 dist
 node_modules
 tmpdata
+bower_components/

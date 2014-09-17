@@ -1,6 +1,6 @@
 'use strict';
 
-angular.module("bestHaskellApp", ['ngRoute']) // {{{
+angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.analytics']) // {{{
 .config(function($routeProvider){
   $routeProvider
     .when('/', {
