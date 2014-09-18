@@ -39,7 +39,7 @@ fs.createReadStream(process.argv[2], 'utf8').pipe(csv.parse())
         for(var date in downloads[pkg]) {
           var d = new Date(date);
           total += downloads[pkg][date];
-          var p = {date: d, count: downloads[pkg][date], total: total};
+          var p = {date: d, count: downloads[pkg][date]};
           if (d >= first) {recent.push(p);}
           if (!initial || initial > d) { initial = d; }
           history.push(p);
