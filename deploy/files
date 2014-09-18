@@ -3,3 +3,17 @@ deploy/package.json                    package.json
 scripts/execute.sh                     scripts/execute.sh
 /usr/lib/x86_64-linux-gnu/libgmp.so.10 libs/libgmp.so.10
 ./dist/build/best-haskell/best-haskell best-haskell
+static/main.html                       static/main.html
+static/main.js                         static/main.js
+static/main.css                        static/main.css
+static/favicon.ico                     static/favicon.ico
+static/img/ajax-loader.gif             static/img/ajax-loader.gif
+static/view/rankingTable.html          static/view/rankingTable.html
+static/view/index.html                 static/view/index.html
+static/view/package.html               static/view/package.html
+static/view/category.html              static/view/category.html
+static/view/categories.html            static/view/categories.html
+static/view/search.html                static/view/search.html
+static/bower_components                static/bower_components
+bower_components/angulartics/dist/angulartics.min.js    bower_components/angulartics/dist/angulartics.min.js 
+bower_components/angulartics/dist/angulartics-ga.min.js bower_components/angulartics/dist/angulartics-ga.min.js 

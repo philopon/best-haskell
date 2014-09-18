@@ -1,0 +1,101 @@
+footer {
+  padding-top: 30px;
+  padding-bottom: 50px;
+  margin-top: 20px;
+  text-align: center;
+  color: #777;
+  border-top: 1px solid #e5e5e5;
+}
+
+caption {
+  font-size: 18px;
+}
+
+.ranking-table .rank {
+  text-align: right;
+  width: 2em;
+}
+
+.ranking-table .name {
+  width: 150px;
+}
+
+.ranking-table .count {
+  text-align: right;
+}
+
+img.loading {
+  margin-top: 150px;
+  margin-bottom: 150px;
+}
+
+/* download chart {{{ */
+.downloads-chart .axis path ,
+.downloads-chart .axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.downloads-chart .line {
+  fill: none;
+  stroke-width: 1.5px;
+}
+
+.downloads-chart .line.count {
+  stroke: gray;
+}
+
+.downloads-chart .line.total {
+  stroke: steelblue;
+}
+
+.downloads-chart .axis text {
+  font-size: 12px;
+}
+
+.downloads-chart .line.cursor {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.downloads-chart .y.axis.left .axis-label {
+  fill: steelblue;
+}
+
+.downloads-chart .y.axis.right .axis-label {
+  fill: gray;
+}
+
+.downloads-chart .cursor.line {
+  fill: none;
+  stroke: lightgray;
+  shape-rendering: crispEdges;
+  stroke-width: 1px;
+}
+
+.downloads-chart .inspector rect {
+  fill: white;
+  stroke-width: 1px;
+  shape-rendering: crispEdges;
+  stroke: lightgray;
+}
+
+.downloads-chart .inspector text {
+  fill: black;
+  font-size: 12px;
+}
+/* download chart }}} */
+
+#categories a {
+  text-decoration: none;
+}
+
+#categories a span {
+  color: #999;
+}
+
+.small-ranking-table .author {
+  display: none !important;
+}

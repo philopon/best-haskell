@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja" ng-app="bestHaskellApp">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link rel="shortcut icon" href="/favicon.ico" type="image/vnd.microsoft.icon" />
+    <link rel="icon" href="/favicon.ico" type="image/vnd.microsoft.icon" />
+
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/main.css">
+
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+      ga('create', 'UA-48784415-4', 'auto');
+    </script>
+    <script src="//code.jquery.com/jquery-2.1.1.min.js"></script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+    <script src="//d3js.org/d3.v3.min.js" charset="utf-8"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.3.0-rc.0/angular.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.3.0-rc.0/angular-route.min.js"></script>
+    <script type="text/javascript" src="/bower_components/angulartics/dist/angulartics.min.js"></script>
+    <script type="text/javascript" src="/bower_components/angulartics/dist/angulartics-ga.min.js"></script>
+    <script src="/main.js"></script>
+    <title ng-bind="'best-haskell - ' + title"></title>
+  </head>
+
+  <body>
+    <nav class="navbar navbar-default" role="navigation" ng-controller="NavbarController">
+
+      <div class="navbar-header">
+        <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-collapse">
+          <span class="sr-only">Toggle navigation</span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+
+        <a class="navbar-brand" href="#">BestHaskell</a>
+      </div>
+
+      <div class="collapse navbar-collapse" id="navbar-collapse">
+        <form class="navbar-form navbar-right" role="search" ng-submit="submit()">
+          <div class="input-group">
+            <input type="text" class="form-control" placeholder="package name" ng-model="query">
+            <div class="input-group-btn">
+              <button type="submit" class="btn btn-default"><span class="glyphicon glyphicon-search"></span></button>
+            </div>
+          </div>
+        </form>
+
+        <ul class="nav navbar-nav navbar-right">
+          <li><a href="#/categories">Categories</a></li>
+          <li><a href="/api/documentation">API</a></li>
+        </ul>
+      </div>
+
+    </nav>
+
+    <div class="container">
+      <div ng-view></div>
+    </div>
+
+    <footer class="hidden-print">
+      <p>This site provided by <a href="https://github.com/philopon/apiary">apiary</a> web framework.</p>
+      <p>source code on <a href="https://github.com/philopon/best-haskell">github</a></p>
+    </footer>
+  </body>
+</html>
