@@ -9,6 +9,7 @@ static/main.css                        static/main.css
 static/favicon.ico                     static/favicon.ico
 static/img/ajax-loader.gif             static/img/ajax-loader.gif
 static/view/rankingTable.html          static/view/rankingTable.html
+static/view/paginate.html              static/view/paginate.html
 static/view/index.html                 static/view/index.html
 static/view/package.html               static/view/package.html
 static/view/category.html              static/view/category.html

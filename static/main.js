@@ -39,6 +39,21 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     }
   }
 }) // }}}
+.directive('paginate', function(){ // {{{
+  return {
+    restrict: 'E',
+    replace: true,
+    templateUrl: 'view/paginate.html',
+    scope: {itemsPerPage: '=', page: '=', numItems: '=', paginateFunction: '='},
+    link: function($scope){
+      $scope.$watch('numItems', function(newVal){
+        if(!newVal) { return; }
+        $scope.last  = Math.ceil($scope.numItems / $scope.itemsPerPage);
+        $scope.pages = _.range(1, $scope.last + 1);
+      });
+    }
+  }
+}) // }}}
 .directive('downloadsChart', function(){ // {{{
   return {
     restrict: 'A',
@@ -366,18 +381,34 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     $location.path('/search/' + $scope.query);
   };
 }) // }}}
-.controller('SearchController', function($rootScope, $routeParams, $scope, $http){ // {{{
-  $rootScope.title = "Search:" + $routeParams.query;
-  $scope.query = $routeParams.query;
-  $http({method: 'GET', url: '/ranking', params: {q: $scope.query, limit: 100}}).success(function(data){
-    $scope.complete = true;
-    $scope.result = data.ranking;
-  })
-  .error(function(data, status){
-    $scope.complete = true;
-    $scope.error = {
-      title: status,
-      description: data
-    }
+.controller('SearchController', function($rootScope, $routeParams, $scope, $http, $location){ // {{{
+  $scope.page         = 1;
+  $scope.itemsPerPage = 10;
+  $rootScope.title    = "Search:" + $routeParams.query;
+  $scope.query        = $routeParams.query;
+
+  $http({method: 'GET', url: '/count', params: {q: $scope.query}}).success(function(data){
+    $scope.hit = parseInt(data);
+    $rootScope.title    = "Search:" + $routeParams.query + '(' + data + ')';
   });
+  
+  $scope.paginate = function(num){
+    $scope.complete = false;
+    $scope.page = num;
+  }
+
+  $scope.$watch('page', function() {
+    $http({method: 'GET', url: '/ranking', params: {q: $scope.query, limit: $scope.itemsPerPage, skip: ($scope.page - 1) * $scope.itemsPerPage}}).success(function(data){
+      $scope.complete = true;
+      $scope.result = data.ranking;
+    })
+    .error(function(data, status){
+      $scope.complete = true;
+      $scope.error = {
+        title: status,
+        description: data
+      }
+    });
+  });
+
 }); // }}}

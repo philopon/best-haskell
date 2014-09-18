@@ -99,3 +99,7 @@ img.loading {
 .small-ranking-table .author {
   display: none !important;
 }
+
+.pagination span {
+  cursor: pointer;
+}
