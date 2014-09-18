@@ -30,7 +30,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     restrict: 'E',
     replace: true,
     templateUrl: 'view/rankingTable.html',
-    scope: {caption: '@', ranking: '='},
+    scope: {caption: '@', skip: '=', ranking: '='},
     link: function($scope){
       $scope.$watch('ranking', function(newVal){
         if(!newVal) {return;}
@@ -398,7 +398,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   }
 
   $scope.$watch('page', function() {
-    $http({method: 'GET', url: '/ranking', params: {q: $scope.query, limit: $scope.itemsPerPage, skip: ($scope.page - 1) * $scope.itemsPerPage}}).success(function(data){
+    $scope.skip         = ($scope.page - 1) * $scope.itemsPerPage;
+    $http({method: 'GET', url: '/ranking', params: {q: $scope.query, limit: $scope.itemsPerPage, skip: $scope.skip}}).success(function(data){
       $scope.complete = true;
       $scope.result = data.ranking;
     })

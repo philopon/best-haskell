@@ -8,7 +8,7 @@
     <th class="count">count</th>
   </tr>
   <tr ng-repeat="item in items">
-    <td class="rank">{{$index + 1}}</td>
+    <td class="rank">{{(skip || 0) + $index + 1}}</td>
     <td class="name"><a ng-href="#/package/{{item.name}}">{{item.name}}</a></td>
     <td class="category">
       <a ng-href="#/category/{{cat}}{{range ? '?range=' + range : ''}}" ng-repeat-start="cat in item.category">{{cat}}</a><span ng-repeat-end ng-if="!$last">, </span>
