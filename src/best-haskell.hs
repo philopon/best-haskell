@@ -80,23 +80,25 @@ instance Query CabalType where
     readQuery Nothing = Nothing
     qTypeRep = typeRep
 
--- cache key prefixes
--- r: /ranking
--- c: /categories
--- p: /package/:package
--- t: /
+instance B.Binary CabalType where
+    get = undefined
+    put Executable = B.put (0 :: Word8)
+    put Library    = B.put (1 :: Word8)
 
+-- cache key prefixes
 data CacheCategory 
     = Ranking
     | Categories
     | Package
     | Top
+    | Count
 
 putCacheCategory :: CacheCategory -> B.Put
 putCacheCategory Ranking    = B.putByteString "r"
 putCacheCategory Categories = B.putByteString "c"
 putCacheCategory Package    = B.putByteString "p"
 putCacheCategory Top        = B.putByteString "t"
+putCacheCategory Count      = B.putByteString "n"
 
 main :: IO ()
 main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ runApiary def $ do
@@ -105,33 +107,51 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
     middleware autohead
 
     -- API
-    [capture|/ranking|]
-        -- query parameters
-        . ("limit"    ?? "number to fetch ranking."               =?!: (10 :: Word))
-        . ("range"    ?? "days of aggregation."                   =?: pWord)
-        . ("since"    ?? "date of aggregation. instead of range." =?: (Proxy :: Proxy Day))
-        . ("skip"     ?? "skip data"                              =?: pWord)
-        . ("category" ?? "category filter."                       =*: pText)
+
+    -- global options
+    ("category" ?? "category filter."                       =*: pText)
         . ("q"        ?? "package query string"                   =?: pText)
         . ("type"     ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType))
-        . switchQuery ("new" ?? "new package only")
+        . switchQuery ("new" ?? "new package only") $ do
 
-        -- filters
-        . accept "application/json"
-        . method GET 
-        . document "get package download ranking."
-        . action $ \limit mbrange mbsince mbskp cats q typ new -> do
-            (st, ed) <- getDataStartEnd
-            rankingAction st RankingQuery
-                { rankingEnd        = ed
-                , rankingLimit      = limit
-                , rankingSince      = mkSince ed mbrange mbsince
-                , rankingSkip       = mbskp
-                , rankingOnlyNew    = new
-                , rankingCategories = cats
-                , rankingType       = typ
-                , rankingPackage    = q
-                } >>= lazyBytes
+        [capture|/ranking|]
+            -- query parameters
+            . ("range"    ?? "days of aggregation."                   =?: pWord)
+            . ("since"    ?? "date of aggregation. instead of range." =?: (Proxy :: Proxy Day))
+            . ("limit"    ?? "number to fetch ranking."               =?!: (10 :: Word))
+            . ("skip"     ?? "skip data"                              =?: pWord)
+
+            -- filters
+            . accept "application/json"
+            . method GET 
+            . document "get package download ranking."
+            . action $ \cats q typ new mbrange mbsince limit mbskp -> do
+                (st, ed) <- getDataStartEnd
+                rankingAction st RankingQuery
+                    { rankingEnd        = ed
+                    , rankingLimit      = limit
+                    , rankingSince      = mkSince ed mbrange mbsince
+                    , rankingSkip       = mbskp
+                    , rankingOnlyNew    = new
+                    , rankingCategories = cats
+                    , rankingType       = typ
+                    , rankingPackage    = q
+                    } >>= lazyBytes
+
+        [capture|/count|] . accept "application/json" . method GET
+            . document "count filtered packages."
+            . action $ \cats q typ new -> do
+                (st, ed) <- getDataStartEnd
+                let key = L.toStrict . B.runPut $ do
+                        putCacheCategory Count
+                        B.put (toModifiedJulianDay st)
+                        B.put (toModifiedJulianDay ed)
+                        mapM_ (B.put . T.encodeUtf8) cats
+                        B.put (fmap T.encodeUtf8 q)
+                        B.put typ
+                        B.put new
+                lazyBytes =<< C.cache key
+                    (fmap A.encode . M.access . M.count $ M.select (rankingFilter ed cats q new typ) "packages")
 
     [capture|/categories|] . accept "application/json" . method GET
         . document "list of categories." . action $ categoriesAction
@@ -293,12 +313,12 @@ instance B.Binary RankingQuery where
 
         B.put rankingOnlyNew
         mapM_ (B.put . T.encodeUtf8) rankingCategories
-        B.put $ case rankingType of { Nothing -> 0; Just Library -> 1; Just Executable -> (2::Word8) }
+        B.put rankingType
 
         B.put (fmap T.encodeUtf8 rankingPackage)
 
 rankingQuery ::  MonadIO m => RankingQuery -> M.Action m [M.Document]
-rankingQuery q@RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
+rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
     Just since ->
         (if null filt then id else (["$match" M.=: filt]:)) $.
         ["$project" M.=: [ "recent"    M.=: M.Int64 1
@@ -331,14 +351,14 @@ rankingQuery q@RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
         maybe id (\skp -> (["$skip" M.=: (fromIntegral skp :: Int)]:)) rankingSkip $.
         ["$limit"   M.=: M.Int64 (fromIntegral rankingLimit)] : []
   where
-    filt = rankingFilter q
+    filt = rankingFilter rankingEnd rankingCategories rankingPackage rankingOnlyNew rankingType
 
-rankingFilter :: RankingQuery -> M.Document
-rankingFilter RankingQuery{..} =
-    (if null rankingCategories then id else (("category"       M.=: ["$in" M.=: rankingCategories]):)) $
-    (case rankingPackage of {Nothing -> id; Just p -> (("name" M.=: M.Regex p "i"):)}) $
-    (if not rankingOnlyNew then id else (("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) rankingEnd) 0]):)) $
-    case rankingType of
+rankingFilter :: Day -> [T.Text] -> Maybe T.Text -> Bool -> Maybe CabalType -> M.Document
+rankingFilter end cats pkg new typ =
+    (if null cats then id else (("category"       M.=: ["$in" M.=: cats ]):)) $
+    (case pkg of {Nothing -> id; Just p -> (("name" M.=: M.Regex p "i"):)}) $
+    (if not new then id else (("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0]):)) $
+    case typ of
         Nothing         -> []
         Just Library    -> ["hasLibrary"  M.=: True]
         Just Executable -> ["executables" M.=: ["$ne" M.=: ([] :: [T.Text])]]
