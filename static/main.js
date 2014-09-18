@@ -54,6 +54,25 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         var scale = svgwidth / width;
         return {width: width, height: width * 9/16, svgwidth: svgwidth, svgheight: svgwidth * 9/16, scale: scale};
       }
+      function completeDownloads(dls) {
+        var last   = dls[dls.length-1].date;
+        var day    = dls[0].date;
+        var total  = 0;
+        var newdls = [];
+
+        while (day <= last) {
+          var d = _.find(dls, function(p){return (p.date - day) == 0});
+          if(d) {
+            total += d.count;
+            newdls.push({date: day, count: d.count, total: total});
+          } else {
+            newdls.push({date: day, count: 0, total: total});
+          }
+          day = new Date(day.getTime() + 1000 * 60 * 60 * 24);
+        }
+        return newdls;
+      }
+
       var size = getScopeSize();
 
       var dateBisector   = d3.bisector(function(d){return d.date;}).left;
@@ -77,10 +96,6 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       var yt = d3.time.scale().range([height, 0]);
       var yc = d3.time.scale().range([height, 0]);
 
-      var xAxis  = d3.svg.axis().scale(x).orient('bottom');
-      var yAxisT = d3.svg.axis().scale(yt).orient('left').ticks(10).tickFormat(countFormatter);
-      var yAxisC = d3.svg.axis().scale(yc).orient('right').ticks(10).tickFormat(countFormatter);
-
       var total = d3.svg.line()
         .x(function(d){return x(d.date);})
         .y(function(d){return yt(d.total);});
@@ -88,8 +103,12 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       var count = d3.svg.line()
         .x(function(d){return x(d.date);})
         .y(function(d){return yc(d.count);});
+ 
+      var xAxis  = d3.svg.axis().scale(x).orient('bottom');
+      var yAxisT = d3.svg.axis().scale(yt).orient('left').ticks(10).tickFormat(countFormatter);
+      var yAxisC = d3.svg.axis().scale(yc).orient('right').ticks(10).tickFormat(countFormatter);
 
-      var countPath = plotarea.append('path').attr('class', 'line count');
+     var countPath = plotarea.append('path').attr('class', 'line count');
       var totalPath = plotarea.append('path').attr('class', 'line total');
 
       var cursor = plotarea.append('line')
@@ -186,12 +205,13 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         var height = size.height - margin.top  - margin.bottom;
         if (mx < 0 || mx > width || mouse[1] > height + margin.top || mouse[1] < margin.top) { cursorVisible(false); return }
 
-        cursorVisible(true)
+        cursorVisible(true);
 
+        var dls   = completeDownloads($scope.downloads);
         var x0    = x.invert(mouse[0] - margin.left);
-        var i     = dateBisector($scope.downloads, x0, 1);
-        var d0    = $scope.downloads[i];
-        var d1    = $scope.downloads[i+1];
+        var i     = dateBisector(dls, x0, 1);
+        var d0    = dls[i];
+        var d1    = dls[i+1];
         var data  = d1 && x0 - d0.date > d1.date - x0 ? d1 : d0;
 
         var tx = mouse[0] > width  + margin.left - 100 ? mx - 100 : mx;
@@ -205,15 +225,16 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         cursor_initialized = true;
       }
 
-      $scope.$watch('downloads', function(newVal, oldVal){
+      $scope.$watch('downloads', function(newVal){
         if(!newVal) {return;}
 
-        x.domain(d3.extent($scope.downloads, function(d){return d.date;}));
-        yt.domain([0, d3.extent($scope.downloads, function(d){return d.total;})[1]]);
-        yc.domain([0, d3.extent($scope.downloads, function(d){return d.count;})[1]]);
+        var dls = completeDownloads($scope.downloads);
+        x.domain(d3.extent(dls, function(d){return d.date;}));
+        yt.domain([0, d3.extent(dls, function(d){return d.total;})[1]]);
+        yc.domain([0, d3.extent(dls, function(d){return d.count;})[1]]);
 
-        countPath.datum($scope.downloads);
-        totalPath.datum($scope.downloads);
+        countPath.datum(dls);
+        totalPath.datum(dls);
 
         plotarea.append('g')
             .attr('class', 'x axis');
