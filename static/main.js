@@ -1,5 +1,7 @@
 'use strict';
 
+var whatsNewPackages = "pachage which initial release within 31days.";
+
 angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.analytics']) // {{{
 .config(function($routeProvider, $analyticsProvider){
   $routeProvider
@@ -30,10 +32,11 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     restrict: 'E',
     replace: true,
     templateUrl: 'view/rankingTable.html',
-    scope: {caption: '@', skip: '=', ranking: '='},
-    link: function($scope){
+    scope: {caption: '@', skip: '=', ranking: '=', tooltip: '@'},
+    link: function($scope, $elems){
       $scope.$watch('ranking', function(newVal){
         if(!newVal) {return;}
+        if($scope.tooltip) {$($elems).find('caption').css('cursor', 'help').tooltip({title: $scope.tooltip});}
         $scope.items = $scope.ranking;
       });
     }
@@ -284,7 +287,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   }
 }) // }}}
 .controller("IndexController", function($rootScope, $scope, $http){ // {{{
-  $rootScope.title     = "index";
+  $rootScope.title        = "index";
+  $scope.whatsNewPackages = whatsNewPackages;
   $http.get('/').success(function(data){
     $scope.complete   = true;
     $scope.nPackages  = data.nPackages;
@@ -302,6 +306,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 }) // }}}
 .controller("CategoryController", function($rootScope, $scope, $routeParams, $http){ // {{{
   var cat = $routeParams.category;
+  $scope.whatsNewPackages = whatsNewPackages;
   $scope.category = cat;
   $rootScope.title = "Category:" + cat;
   $http({method: "GET", url: '/', params: {category: cat}})
