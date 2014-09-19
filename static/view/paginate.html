@@ -1,7 +1,7 @@
 <div class="center-block text-center">
   <ul class="pagination">
     <li ng-class="{disabled: page == 1}"><span ng-click="page != 1 && paginateFunction(page - 1)">&laquo;</span></li>
-    <li ng-repeat="p in pages" ng-class="{active: p == page}"><span ng-click="p != page && paginateFunction(p)">{{p}}</span></li>
+    <li ng-repeat="p in pages track by $index" ng-class="{active: p == page, disabled: !p}"><span ng-click="p && p != page && paginateFunction(p)">{{p || '...'}}</span></li>
     <li ng-class="{disabled: page == last}"><span ng-click="page != last && paginateFunction(page + 1)">&raquo;</span></li>
   </ul>
 </div>

@@ -50,10 +50,21 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     templateUrl: 'view/paginate.html',
     scope: {itemsPerPage: '=', page: '=', numItems: '=', paginateFunction: '='},
     link: function($scope){
-      $scope.$watch('numItems', function(newVal){
-        if(!newVal) { return; }
+      $scope.$watchGroup(['numItems', 'page'], function(newVal){
+        if(!newVal[0] || !newVal[1]) { return; }
         $scope.last  = Math.ceil($scope.numItems / $scope.itemsPerPage);
-        $scope.pages = _.range(1, $scope.last + 1);
+
+        if ($scope.last > 7 ) {
+          if ($scope.page < 4) {
+            $scope.pages = [1,2,3,4, null, $scope.last];
+          } else if ($scope.page > $scope.last - 3) {
+            $scope.pages = [1, null, $scope.last - 3, $scope.last - 2, $scope.last - 1, $scope.last];
+          } else {
+            $scope.pages = [1, null, $scope.page - 1, $scope.page, $scope.page + 1, null, $scope.last];
+          }
+        } else {
+          $scope.pages = _.range(1, $scope.last + 1);
+        }
       });
     }
   }
@@ -383,12 +394,18 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   });
 }) // }}}
 .controller('NavbarController', function($scope, $location){ // {{{
+  $scope.error = false;
   $scope.submit = function(){
-    $location.path('/search/' + $scope.query);
+    if ($scope.query && $scope.query.length > 0) {
+      $location.path('/search/' + $scope.query);
+    } else {
+      $scope.error = true;
+    }
   };
+  $scope.$watch('query', function(){$scope.error = false;});
 }) // }}}
 .controller('SearchController', function($rootScope, $routeParams, $scope, $http, $location){ // {{{
-  $scope.page         = $location.search()['page'] || 1;
+  $scope.page         = parseInt($location.search()['page']) || 1;
   $scope.itemsPerPage = 10;
   $rootScope.title    = "Search:" + $routeParams.query;
   $scope.query        = $routeParams.query;

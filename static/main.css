@@ -103,3 +103,8 @@ img.loading {
 .pagination span {
   cursor: pointer;
 }
+
+.form-control.input-error {
+  border-color: rgba(233, 102, 102, 1);
+  box-shadow: 0px 1px 1px rgba(0, 0, 0, 0.075) inset, 0px 0px 8px rgba(233, 102, 102, 0.6);
+}
