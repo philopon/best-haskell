@@ -1,6 +1,6 @@
 'use strict';
 
-var whatsNewPackages = "pachage which initial release within 31days.";
+var whatsNewPackages = 'package which released within 31 days';
 
 angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.analytics']) // {{{
 .config(function($routeProvider, $analyticsProvider){
