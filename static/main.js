@@ -23,7 +23,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     })
     .when('/search/:query*', {
       templateUrl: 'view/search.html',
-      controller:  'SearchController'
+      controller:  'SearchController',
+      reloadOnSearch: false
     })
     .otherwise({ redirectTo: '/' });
 }) // }}}
@@ -387,7 +388,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   };
 }) // }}}
 .controller('SearchController', function($rootScope, $routeParams, $scope, $http, $location){ // {{{
-  $scope.page         = 1;
+  $scope.page         = $location.search()['page'] || 1;
   $scope.itemsPerPage = 10;
   $rootScope.title    = "Search:" + $routeParams.query;
   $scope.query        = $routeParams.query;
@@ -403,6 +404,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   }
 
   $scope.$watch('page', function() {
+    $location.search('page', $scope.page);
     $scope.skip         = ($scope.page - 1) * $scope.itemsPerPage;
     $http({method: 'GET', url: '/ranking', params: {q: $scope.query, limit: $scope.itemsPerPage, skip: $scope.skip}}).success(function(data){
       $scope.complete = true;
