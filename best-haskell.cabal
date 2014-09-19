@@ -17,22 +17,22 @@ cabal-version:       >=1.10
 executable best-haskell
   main-is:             src/best-haskell.hs
   -- other-modules:       
-  build-depends:       base                 >=4.6  && <4.8
-                     , warp                 >=3.0  && <3.1
-                     , wai-extra            >=3.0  && <3.1
-                     , apiary               >=0.17 && <0.18
-                     , apiary-mongoDB       >=0.17 && <0.18
-                     , apiary-memcached     >=0.17 && <0.18
-                     , memcached-binary     >=0.1  && <0.3
-                     , time                 >=1.4  && <1.5
-                     , monad-control        >=0.3  && <0.4
-                     , process              >=1.2  && <1.3
-                     , text                 >=1.1  && <1.2
-                     , bytestring           >=0.10 && <0.11
-                     , binary               >=0.7  && <0.8
-                     , aeson                >=0.7  && <0.9
-                     , abeson               >=0.1  && <0.2
-                     , filepath             >=1.3  && <1.4
+  build-depends:       base                 >=4.6    && <4.8
+                     , warp                 >=3.0    && <3.1
+                     , wai-extra            >=3.0    && <3.1
+                     , apiary               >=0.17.1 && <0.18
+                     , apiary-mongoDB       >=0.17   && <0.18
+                     , apiary-memcached     >=0.17   && <0.18
+                     , memcached-binary     >=0.1    && <0.3
+                     , time                 >=1.4    && <1.5
+                     , monad-control        >=0.3    && <0.4
+                     , process              >=1.2    && <1.3
+                     , text                 >=1.1    && <1.2
+                     , bytestring           >=0.10   && <0.11
+                     , binary               >=0.7    && <0.8
+                     , aeson                >=0.7    && <0.9
+                     , abeson               >=0.1    && <0.2
+                     , filepath             >=1.3    && <1.4
   ghc-options:         -Wall -O2 -threaded
   default-language:    Haskell2010
 

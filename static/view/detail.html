@@ -1,0 +1,14 @@
+<div class="page-header">
+  <h1>{{title}} <small ng-if="hit">{{hit}} packages hit</small></h1>
+</div>
+
+<div ng-if="complete" id="categories">
+  <ranking-table author="true" ranking='result' skip="skip"></ranking-table>
+</div>
+
+
+<div ng-if="!complete" class="center-block text-center">
+  <img class="loading" src='/img/ajax-loader.gif'>
+</div>
+
+<paginate num-items="hit" page="page" items-per-page="itemsPerPage" paginate-function="paginate"></paginate>

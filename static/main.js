@@ -26,14 +26,18 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       controller:  'SearchController',
       reloadOnSearch: false
     })
+    .when('/detail/:mode', {
+      templateUrl: 'view/detail.html',
+      controller:  'DetailController',
+      reloadOnSearch: false
+    })
     .otherwise({ redirectTo: '/' });
 }) // }}}
 .directive('rankingTable', function(){ // {{{
   return {
     restrict: 'E',
-    replace: true,
     templateUrl: 'view/rankingTable.html',
-    scope: {caption: '@', skip: '=', ranking: '=', tooltip: '@'},
+    scope: {caption: '@', skip: '=', ranking: '=', tooltip: '@', more: '@'},
     link: function($scope, $elems){
       $scope.$watch('ranking', function(newVal){
         if(!newVal) {return;}
@@ -405,7 +409,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   $scope.$watch('query', function(){$scope.error = false;});
 }) // }}}
 .controller('SearchController', function($rootScope, $routeParams, $scope, $http, $location){ // {{{
-  $scope.page         = parseInt($location.search()['page']) || 1;
+  $scope.page         = parseInt($location.search().page) || 1;
   $scope.itemsPerPage = 10;
   $rootScope.title    = "Search:" + $routeParams.query;
   $scope.query        = $routeParams.query;
@@ -417,7 +421,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   
   $scope.paginate = function(num){
     $scope.complete = false;
-    $scope.page = num;
+    $scope.page     = num;
   }
 
   $scope.$watch('page', function() {
@@ -434,6 +438,42 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         description: data
       }
     });
+  });
+
+}) // }}}
+.controller('DetailController', function($rootScope, $scope, $routeParams, $location, $http){ // {{{
+  var params = {};
+  if      ( $routeParams.mode == 'total'  ) {$scope.title = "total downloads" }
+  else if ( $routeParams.mode == 'weekly' ) {$scope.title = "last 1 week" ; params['range'] = 7 }
+  else if ( $routeParams.mode == 'new'    ) {$scope.title = "new packages"; params['new'] = true }
+  else {$location.path('/');}
+
+  $scope.category     = $location.search().category;
+  if ($scope.category) {$scope.title += " in " + $scope.category; params['category'] = $scope.category}
+  $rootScope.title = $scope.title;
+
+  $scope.page         = parseInt($location.search().page) || 1;
+  $scope.itemsPerPage = 10;
+
+  $http({method: 'GET', url: '/count', params: params}).success(function(data){
+    $scope.hit = parseInt(data);
+  });
+
+  $scope.paginate = function(num){
+    $scope.complete = false;
+    $scope.page     = num;
+  }
+
+  params['limit'] = $scope.itemsPerPage;
+
+  $scope.$watch('page', function(){
+    $location.search('page', $scope.page);
+    $scope.skip = ($scope.page - 1) * $scope.itemsPerPage;
+    params['skip'] = $scope.skip;
+    $http({method: 'GET', url: '/ranking', params: params}).success(function(data){
+      $scope.complete = true;
+      $scope.result   = data.ranking;
+    })
   });
 
 }); // }}}

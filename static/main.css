@@ -11,6 +11,14 @@ caption {
   font-size: 18px;
 }
 
+.ranking-table {
+  margin-bottom: 30px;
+}
+
+.ranking-table table {
+  margin-bottom: 0px;
+}
+
 .ranking-table .rank {
   text-align: right;
   width: 2em;
