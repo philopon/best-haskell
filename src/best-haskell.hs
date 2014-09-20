@@ -321,11 +321,12 @@ rankingQuery ::  MonadIO m => RankingQuery -> M.Action m [M.Document]
 rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
     Just since ->
         (if null filt then id else (["$match" M.=: filt]:)) $.
-        ["$project" M.=: [ "recent"    M.=: M.Int64 1
-                         , "synopsis"  M.=: M.Int64 1
-                         , "author"    M.=: M.Int64 1
-                         , "name"      M.=: M.Int64 1
-                         , "category"  M.=: M.Int64 1
+        ["$project" M.=: [ "recent"      M.=: M.Int64 1
+                         , "synopsis"    M.=: M.Int64 1
+                         , "author"      M.=: M.Int64 1
+                         , "maintainers" M.=: M.Int64 1
+                         , "name"        M.=: M.Int64 1
+                         , "category"    M.=: M.Int64 1
                          ]] :
         [ "$unwind" M.=: ("$recent" :: T.Text)] :
         [ "$match"  M.=: ["recent.date"  M.=: ["$gt" M.=: M.UTC (UTCTime since 0)]]] :
