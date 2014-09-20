@@ -328,24 +328,26 @@ rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
                          , "category"  M.=: M.Int64 1
                          ]] :
         [ "$unwind" M.=: ("$recent" :: T.Text)] :
-        [ "$match"  M.=: ["recent.date" M.=: ["$gt" M.=: M.UTC (UTCTime since 0)]]] :
-        ["$group"   M.=: [ "_id"      M.=: ("$name" :: T.Text)
-                         , "name"     M.=: ["$first" M.=: ("$name"         :: T.Text)]
-                         , "synopsis" M.=: ["$first" M.=: ("$synopsis"     :: T.Text)]
-                         , "author"   M.=: ["$first" M.=: ("$author"       :: T.Text)]
-                         , "category" M.=: ["$first" M.=: ("$category"     :: T.Text)]
-                         , "total"    M.=: ["$sum"   M.=: ("$recent.count" :: T.Text)]
+        [ "$match"  M.=: ["recent.date"  M.=: ["$gt" M.=: M.UTC (UTCTime since 0)]]] :
+        ["$group"   M.=: [ "_id"         M.=: ("$name" :: T.Text)
+                         , "name"        M.=: ["$first" M.=: ("$name"         :: T.Text)]
+                         , "synopsis"    M.=: ["$first" M.=: ("$synopsis"     :: T.Text)]
+                         , "author"      M.=: ["$first" M.=: ("$author"       :: T.Text)]
+                         , "maintainers" M.=: ["$first" M.=: ("$maintainers"  :: T.Text)]
+                         , "category"    M.=: ["$first" M.=: ("$category"     :: T.Text)]
+                         , "total"       M.=: ["$sum"   M.=: ("$recent.count" :: T.Text)]
                          ]] :
         ["$sort"    M.=: ["total" M.=: (-1 :: Int)]] :
         maybe id (\skp -> (["$skip" M.=: (fromIntegral skp :: Int)]:)) rankingSkip $.
         ["$limit"   M.=: M.Int64 (fromIntegral $ min 100 rankingLimit)] : []
     Nothing ->
         (if null filt then id else (["$match" M.=: filt]:)) $.
-        ["$project" M.=: [ "total"    M.=: M.Int64 1
-                         , "synopsis" M.=: M.Int64 1
-                         , "author"   M.=: M.Int64 1
-                         , "category" M.=: M.Int64 1
-                         , "name"     M.=: M.Int64 1
+        ["$project" M.=: [ "total"       M.=: M.Int64 1
+                         , "synopsis"    M.=: M.Int64 1
+                         , "author"      M.=: M.Int64 1
+                         , "maintainers" M.=: M.Int64 1
+                         , "category"    M.=: M.Int64 1
+                         , "name"        M.=: M.Int64 1
                          ]] :
         ["$sort"    M.=: ["total" M.=: (-1 :: Int)]] :
         maybe id (\skp -> (["$skip" M.=: (fromIntegral skp :: Int)]:)) rankingSkip $.
