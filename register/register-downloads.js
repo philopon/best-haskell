@@ -5,13 +5,17 @@ var fs  = require('fs');
 var url  = process.env.MONGOHQ_URL
 
 var downloads = {};
+var versions  = {};
 fs.createReadStream(process.argv[2], 'utf8').pipe(csv.parse())
   .on('data', function(data){
     var pkg     = data[0];
     var date    = data[1];
+    var version = data[2];
     var count   = parseInt(data[3]);
-    if (!downloads[pkg]) {downloads[pkg] = {}}
+    if (!downloads[pkg]) {downloads[pkg] = {};}
     if (!downloads[pkg][date]) {downloads[pkg][date] = 0}
+    if (!versions[pkg])          {versions[pkg] = {};}
+    if (!versions[pkg][version]) {versions[pkg][version] = date; }
     downloads[pkg][date] += count;
   })
   .on('end', function(){
@@ -32,6 +36,7 @@ fs.createReadStream(process.argv[2], 'utf8').pipe(csv.parse())
       var first = new Date(last - 1000 * 60 * 60 * 24 * 31);
 
       for(var pkg in downloads) {
+        var update  = false;
         var recent  = [];
         var history = [];
         var total   = 0;
@@ -44,10 +49,18 @@ fs.createReadStream(process.argv[2], 'utf8').pipe(csv.parse())
           if (!initial || initial > d) { initial = d; }
           history.push(p);
         }
+
+        var releases = [];
+        for(var ver in versions[pkg]) {
+          var d = new Date(versions[pkg][ver]);
+          releases.push({version: ver, release: d});
+        }
+
         nUpd++;
-        bulk.find({name: pkg}).updateOne({$set: {recent: recent, downloads: history, initialRelease: initial, total: total}});
+        bulk.find({name: pkg}).updateOne({$set: {recent: recent, downloads: history, initialRelease: initial, total: total, releases: releases}});
       }
 
+      console.log(last);
       console.log(nUpd);
 
       if(nUpd > 0) {
