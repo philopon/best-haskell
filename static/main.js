@@ -337,6 +337,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   $scope.error = false;
   $scope.submit = function(){
     if ($scope.query && $scope.query.length > 0) {
+      $location.search('page', 1);
       $location.path('/search/' + $scope.query);
     } else {
       $scope.error = true;
