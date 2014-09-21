@@ -273,7 +273,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 
         var dls   = completeDownloads($scope.downloads);
         var x0    = x.invert(mouse[0] - margin.left);
-        var i     = dateBisector(dls, x0, 1);
+        x0        = new Date(x0.getTime() - 1000 * 60 * 60 * 12);
+        var i     = dateBisector(dls, x0);
         var d0    = dls[i];
         var d1    = dls[i+1];
         var data  = d1 && x0 - d0.date > d1.date - x0 ? d1 : d0;
