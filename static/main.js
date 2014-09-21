@@ -156,9 +156,9 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       var plotarea = svg.append('g')
           .attr('transform', "scale(" + size.scale + ',' + size.scale + ') translate(' + margin.left + "," + margin.top + ")" );
 
-      var x  = d3.time.scale().range([0, width]);
-      var yt = d3.time.scale().range([height, 0]);
-      var yc = d3.time.scale().range([height, 0]);
+      var x  = d3.time.scale.utc().range([0, width]);
+      var yt = d3.time.scale.utc().range([height, 0]);
+      var yc = d3.time.scale.utc().range([height, 0]);
 
       var total = d3.svg.line()
         .x(function(d){return x(d.date);})
