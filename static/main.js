@@ -348,7 +348,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 }) // }}}
 .controller("IndexController", function($rootScope, $scope, $http){ // {{{
   $rootScope.title        = "index";
-  $http.get('/').success(function(data){
+  $http.get('/tables').success(function(data){
     $scope.complete   = true;
     $scope.nPackages  = data.nPackages;
     $scope.lastUpdate = data.lastUpdate;
@@ -502,7 +502,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   $rootScope.title = "Category:" + cat;
   $scope.title     = "Category:" + cat;
   $scope.params = "?category=" + cat;
-  $http({method: "GET", url: '/', params: {category: cat}})
+  $http({method: "GET", url: '/tables', params: {category: cat}})
     .success(function(data){
       $scope.complete   = true;
       $scope.nPackages  = data.nPackages;
@@ -545,7 +545,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   $rootScope.title = "Maintainer:" + m;
   $scope.title     = "Maintainer:" + m;
   $scope.params = "?maintainer=" + m;
-  $http({method: "GET", url: '/', params: {maintainer: m}})
+  $http({method: "GET", url: '/tables', params: {maintainer: m}})
     .success(function(data){
       $scope.complete   = true;
       $scope.nPackages  = data.nPackages;
@@ -600,7 +600,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   $rootScope.title = "License:" + l;
   $scope.title     = "License:" + l;
   $scope.params = "?license=" + l;
-  $http({method: "GET", url: '/', params: {license: l}})
+  $http({method: "GET", url: '/tables', params: {license: l}})
     .success(function(data){
       $scope.complete   = true;
       $scope.nPackages  = data.nPackages;

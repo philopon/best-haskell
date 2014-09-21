@@ -193,7 +193,7 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
         bytes "flush"
 
     -- / all information used in root page.
-    [capture|/|] . accept "application/json" . method GET
+    [capture|/tables|] . accept "application/json" . method GET
         . ("category"   =*: pText)
         . ("maintainer" =*: pText)
         . ("license"    =?: pText)
