@@ -1,7 +1,5 @@
 'use strict';
 
-var whatsNewPackages = 'package which released within 31 days';
-
 angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.analytics']) // {{{
 .config(function($routeProvider, $analyticsProvider){
   $routeProvider
@@ -13,14 +11,6 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       templateUrl: 'view/package.html',
       controller:  'PackageController'
     })
-    .when('/category/:category*', {
-      templateUrl: 'view/category.html',
-      controller:  'CategoryController'
-    })
-    .when('/categories', {
-      templateUrl: 'view/categories.html',
-      controller: 'CategoriesController'
-    })
     .when('/search/:query*', {
       templateUrl: 'view/search.html',
       controller:  'SearchController',
@@ -31,8 +21,33 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       controller:  'DetailController',
       reloadOnSearch: false
     })
+    .when('/categories', {
+      templateUrl: 'view/categories.html',
+      controller: 'CategoriesController'
+    })
+    .when('/category/:category*', {
+      templateUrl: 'view/subIndex.html',
+      controller:  'CategoryController'
+    })
+    .when('/maintainers', {
+      templateUrl: 'view/maintainers.html',
+      controller:  'MaintainersController'
+    })
+    .when('/maintainer/:maintainer*', {
+      templateUrl: 'view/subIndex.html',
+      controller:  'MaintainerController'
+    })
+    .when('/licenses', {
+      templateUrl: 'view/licenses.html',
+      controller:  'LicensesController'
+    })
+    .when('/license/:license*', {
+      templateUrl: 'view/subIndex.html',
+      controller:  'LicenseController'
+    })
     .otherwise({ redirectTo: '/' });
 }) // }}}
+
 .directive('rankingTable', function(){ // {{{
   return {
     restrict: 'E',
@@ -45,6 +60,21 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         $scope.items = $scope.ranking;
       });
     }
+  }
+}) // }}}
+.directive('threeTables', function(){ // {{{
+  return {
+    restrict: 'E',
+    templateUrl: 'view/3tables.html',
+    require: 'rankingTable'
+  }
+}) // }}}
+.directive('loadingContents', function(){ // {{{
+  return {
+    restrict: 'A',
+    templateUrl: 'view/loadingContents.html',
+    scope: {complete: '=', error: '='},
+    transclude: true
   }
 }) // }}}
 .directive('paginate', function(){ // {{{
@@ -302,9 +332,20 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     }
   }
 }) // }}}
+
+.controller('NavbarController', function($scope, $location){ // {{{
+  $scope.error = false;
+  $scope.submit = function(){
+    if ($scope.query && $scope.query.length > 0) {
+      $location.path('/search/' + $scope.query);
+    } else {
+      $scope.error = true;
+    }
+  };
+  $scope.$watch('query', function(){$scope.error = false;});
+}) // }}}
 .controller("IndexController", function($rootScope, $scope, $http){ // {{{
   $rootScope.title        = "index";
-  $scope.whatsNewPackages = whatsNewPackages;
   $http.get('/').success(function(data){
     $scope.complete   = true;
     $scope.nPackages  = data.nPackages;
@@ -319,27 +360,6 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       description: data
     }
   });
-}) // }}}
-.controller("CategoryController", function($rootScope, $scope, $routeParams, $http){ // {{{
-  var cat = $routeParams.category;
-  $scope.whatsNewPackages = whatsNewPackages;
-  $scope.category = cat;
-  $rootScope.title = "Category:" + cat;
-  $http({method: "GET", url: '/', params: {category: cat}})
-    .success(function(data){
-      $scope.complete   = true;
-      $scope.nPackages  = data.nPackages;
-      $scope.lastUpdate = data.lastUpdate;
-      $scope.total      = data.total.ranking;
-      $scope.weekly     = data.weekly.ranking;
-      $scope.new        = data.new.ranking;
-    }).error(function(data, status){
-      $scope.complete = true;
-      $scope.error = {
-        title: status,
-        description: data
-      }
-    });
 }) // }}}
 .controller('PackageController', function($rootScope, $scope, $routeParams, $http){ // {{{
   $scope.name = $routeParams.package;
@@ -359,7 +379,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     $scope.homepage       = data.homepage;
     $scope.initialRelease = new Date(data.initialRelease);
     $scope.license        = data.license;
-    $scope.maintainer     = data.maintainer;
+    $scope.maintainers    = data.maintainers;
     $scope.name           = data.name;
     $rootScope.title      = data.name;
     $scope.packageUrl     = data.packageUrl;
@@ -375,38 +395,6 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       description: data
     }
   });
-}) // }}}
-.controller('CategoriesController', function($rootScope, $scope, $http){ // {{{
-  $rootScope.title = "categories";
-  $http.get('/categories').success(function(data){
-    $scope.complete   = true;
-    $scope.categories = data.categories;
-    var max = 0;
-    for(var i = 0; i < data.categories.length; i++){
-      max = Math.max(max, data.categories[i].count);
-    }
-    $scope.fsFun = function(c) {
-      return 14 + Math.log(c) / Math.log(max) * 36;
-    }
-  })
-  .error(function(data, status){
-    $scope.complete = true;
-    $scope.error = {
-      title: status,
-      description: data
-    }
-  });
-}) // }}}
-.controller('NavbarController', function($scope, $location){ // {{{
-  $scope.error = false;
-  $scope.submit = function(){
-    if ($scope.query && $scope.query.length > 0) {
-      $location.path('/search/' + $scope.query);
-    } else {
-      $scope.error = true;
-    }
-  };
-  $scope.$watch('query', function(){$scope.error = false;});
 }) // }}}
 .controller('SearchController', function($rootScope, $routeParams, $scope, $http, $location){ // {{{
   $scope.page         = parseInt($location.search().page) || 1;
@@ -443,14 +431,21 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 }) // }}}
 .controller('DetailController', function($rootScope, $scope, $routeParams, $location, $http){ // {{{
   var params = {};
-  if      ( $routeParams.mode == 'total'  ) {$scope.title = "total downloads" }
-  else if ( $routeParams.mode == 'weekly' ) {$scope.title = "last 1 week" ; params['range'] = 7 }
-  else if ( $routeParams.mode == 'new'    ) {$scope.title = "new packages"; params['new'] = true }
+  if      ( $routeParams.mode == 'total'  ) {$scope.denominator = "total downloads" }
+  else if ( $routeParams.mode == 'weekly' ) {$scope.denominator = "last 1 week" ; params['range'] = 7 }
+  else if ( $routeParams.mode == 'new'    ) {$scope.denominator = "new packages"; params['new'] = true }
   else {$location.path('/');}
 
-  $scope.category     = $location.search().category;
-  if ($scope.category) {$scope.title += " in " + $scope.category; params['category'] = $scope.category}
-  $rootScope.title = $scope.title;
+  $scope.category   = $location.search().category;
+  $scope.maintainer = $location.search().maintainer;
+  $scope.license    = $location.search().license;
+  if ($scope.category)   {params['category']   = $scope.category}
+  if ($scope.maintainer) {params['maintainer'] = $scope.maintainer}
+  if ($scope.license)    {params['license']    = $scope.license}
+  $rootScope.title = $scope.denominator
+    + ($scope.category   ? " in " + $scope.category      : "")
+    + ($scope.license    ? " licensed " + $scope.license : "")
+    + ($scope.maintainer ? " by " + $scope.maintainer    : "");
 
   $scope.page         = parseInt($location.search().page) || 1;
   $scope.itemsPerPage = 10;
@@ -476,4 +471,146 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     })
   });
 
-}); // }}}
+}) // }}}
+
+.controller('CategoriesController', function($rootScope, $scope, $http){ // {{{
+  $rootScope.title = "categories";
+  $http.get('/categories').success(function(data){
+    $scope.complete   = true;
+    $scope.categories = data.categories;
+    var max = 0;
+    for(var i = 0; i < data.categories.length; i++){
+      max = Math.max(max, data.categories[i].count);
+    }
+    $scope.fsFun = function(c) {
+      return 14 + Math.log(c) / Math.log(max) * 36;
+    }
+  })
+  .error(function(data, status){
+    $scope.complete = true;
+    $scope.error = {
+      title: status,
+      description: data
+    }
+  });
+}) // }}}
+.controller("CategoryController", function($rootScope, $scope, $routeParams, $http){ // {{{
+  var cat = $routeParams.category;
+  $scope.category = cat;
+  $rootScope.title = "Category:" + cat;
+  $scope.title     = "Category:" + cat;
+  $scope.params = "?category=" + cat;
+  $http({method: "GET", url: '/', params: {category: cat}})
+    .success(function(data){
+      $scope.complete   = true;
+      $scope.nPackages  = data.nPackages;
+      $scope.lastUpdate = data.lastUpdate;
+      $scope.total      = data.total.ranking;
+      $scope.weekly     = data.weekly.ranking;
+      $scope.new        = data.new.ranking;
+    }).error(function(data, status){
+      $scope.complete = true;
+      $scope.error = {
+        title: status,
+        description: data
+      }
+    });
+}) // }}}
+
+.controller('MaintainersController', function($rootScope, $scope, $http){ // {{{
+  $rootScope.title = "maintainers";
+  $http.get('/maintainers').success(function(data){
+    $scope.complete    = true;
+    $scope.maintainers = data.maintainers;
+    var max = 0;
+    for(var i = 0; i < data.maintainers.length; i++){
+      max = Math.max(max, data.maintainers[i].count);
+    }
+    $scope.fsFun = function(c) {
+      return 14 + Math.log(c) / Math.log(max) * 36;
+    }
+  })
+  .error(function(data, status){
+    $scope.complete = true;
+    $scope.error = {
+      title: status,
+      description: data
+    }
+  });
+}) // }}}
+.controller("MaintainerController", function($rootScope, $scope, $routeParams, $http){ // {{{
+  var m = $routeParams.maintainer;
+  $rootScope.title = "Maintainer:" + m;
+  $scope.title     = "Maintainer:" + m;
+  $scope.params = "?maintainer=" + m;
+  $http({method: "GET", url: '/', params: {maintainer: m}})
+    .success(function(data){
+      $scope.complete   = true;
+      $scope.nPackages  = data.nPackages;
+      $scope.lastUpdate = data.lastUpdate;
+      $scope.total      = data.total.ranking;
+      $scope.weekly     = data.weekly.ranking;
+      $scope.new        = data.new.ranking;
+    }).error(function(data, status){
+      $scope.complete = true;
+      $scope.error = {
+        title: status,
+        description: data
+      }
+    });
+}) // }}}
+
+.controller('LicensesController', function($rootScope, $scope, $http){ // {{{
+  $rootScope.title = "Licenses";
+  $http.get('/licenses').success(function(data){
+    $scope.complete = true;
+
+    var other = undefined;
+    var ls    = [];
+    for (var i = 0; i < data.licenses.length; i++) {
+      if(data.licenses[i].license != "OtherLicense") {
+        ls.push(data.licenses[i]);
+      } else {
+        other = data.licenses[i];
+      }
+    }
+    ls.push(other);
+    $scope.licenses = ls;
+
+    var max = 0;
+    for(var i = 0; i < data.licenses.length; i++){
+      max = Math.max(max, data.licenses[i].count);
+    }
+    $scope.fsFun = function(c) {
+      return 14 + Math.log(c) / Math.log(max) * 36;
+    }
+  })
+  .error(function(data, status){
+    $scope.complete = true;
+    $scope.error = {
+      title: status,
+      description: data
+    }
+  });
+}) // }}}
+.controller("LicenseController", function($rootScope, $scope, $routeParams, $http){ // {{{
+  var l = $routeParams.license;
+  $rootScope.title = "License:" + l;
+  $scope.title     = "License:" + l;
+  $scope.params = "?license=" + l;
+  $http({method: "GET", url: '/', params: {license: l}})
+    .success(function(data){
+      $scope.complete   = true;
+      $scope.nPackages  = data.nPackages;
+      $scope.lastUpdate = data.lastUpdate;
+      $scope.total      = data.total.ranking;
+      $scope.weekly     = data.weekly.ranking;
+      $scope.new        = data.new.ranking;
+    }).error(function(data, status){
+      $scope.complete = true;
+      $scope.error = {
+        title: status,
+        description: data
+      }
+    });
+}) // }}}

@@ -1,12 +1,12 @@
 <h1><a ng-href="https://hackage.haskell.org/package/{{name}}">{{name}} <small ng-if"complete &&!error">{{synopsis}}</small></a></h1>
 
-<div ng-if="complete && !error">
+<div loading-contents complete="complete" error="error">
   <dl class="dl-horizontal">
     <dt>Latest version</dt><dd>{{version}}</dd>
-    <dt>License</dt><dd>{{license}}</dd>
+    <dt>License</dt><dd><a ng-href="#/license/{{license}}">{{license}}</a></dd>
     <dt>Copyright</dt><dd>{{copyright}}</dd>
     <dt>Author</dt><dd>{{author}}</dd>
-    <dt>Maintainer</dt><dd>{{maintainer}}</dd>
+    <dt>Maintainers</dt><dd><a ng-repeat-start="m in maintainers" ng-href="#/maintainer/{{m}}">{{m}}</a><span ng-repeat-end ng-if="!$last">, </span></dd>
     <dt>Stability</dt><dd>{{stability}}</dd>
     <dt>Category</dt>
     <dd><a ng-repeat-start="cat in category" ng-href="#/category/{{cat}}">{{cat}}</a><span ng-repeat-end ng-if="!$last">, </span></dd>
@@ -17,11 +17,4 @@
   </dl>
 
   <div downloads-chart downloads='downloads'></div>
-</div>
-<div ng-if="complete && error">
-  <h1>{{error.title}}</h1>
-  <p>{{error.description}}</p>
-</div>
-<div ng-if="!complete" class="center-block text-center">
-  <img class="loading" src='/img/ajax-loader.gif'>
 </div>

@@ -8,12 +8,16 @@ static/main.js                         static/main.js
 static/main.css                        static/main.css
 static/favicon.ico                     static/favicon.ico
 static/img/ajax-loader.gif             static/img/ajax-loader.gif
+static/view/loadingContents.html       static/view/loadingContents.html
 static/view/rankingTable.html          static/view/rankingTable.html
+static/view/3tables.html               static/view/3tables.html
 static/view/paginate.html              static/view/paginate.html
 static/view/index.html                 static/view/index.html
+static/view/subIndex.html              static/view/subIndex.html
 static/view/package.html               static/view/package.html
-static/view/category.html              static/view/category.html
 static/view/categories.html            static/view/categories.html
+static/view/licenses.html              static/view/licenses.html
+static/view/maintainers.html           static/view/maintainers.html
 static/view/search.html                static/view/search.html
 static/view/detail.html                static/view/detail.html
 static/bower_components                static/bower_components

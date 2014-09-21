@@ -1,0 +1,12 @@
+<div ng-if="complete && !error">
+  <div ng-transclude></div>
+</div>
+
+<div ng-if="complete && error">
+  <h1>{{error.title}}</h1>
+  <p>{{error.description}}</p>
+</div>
+
+<div ng-if="!complete" class="center-block text-center">
+  <img class="loading" src='/img/ajax-loader.gif'>
+</div>

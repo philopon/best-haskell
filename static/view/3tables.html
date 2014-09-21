@@ -1,0 +1,17 @@
+<div loading-contents complete="complete" error="error">
+  <div class="row">
+    <div class="col-sm-12 col-md-12">
+      <ranking-table ranking='total' caption='total downloads' more="#/detail/total{{params}}"></ranking-table>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-sm-12 col-md-6">
+      <ranking-table class="small-ranking-table" ranking='weekly' caption='last 1 week' more="#/detail/weekly{{params}}"></ranking-table>
+    </div>
+
+    <div class="col-sm-12 col-md-6">
+      <ranking-table class="small-ranking-table" ranking='new' caption='new packages' tooltip="package which released within 31 days" more="#/detail/new{{params}}"></ranking-table>
+    </div>
+  </div>
+</div>

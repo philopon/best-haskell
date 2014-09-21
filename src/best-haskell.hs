@@ -46,7 +46,7 @@ data AppConfig = AppConfig { flushHandlerEnable :: Bool
 
 initApp :: MonadIO m => Initializer' m AppConfig
 initApp = initializer' . liftIO $
-    AppConfig False (600 * 10^(6::Int)) <$> newEmptyMVar
+    AppConfig True  (600 * 10^(6::Int)) <$> newEmptyMVar
 
 mongoConfig :: M.MongoDBConfig
 mongoConfig = def { M.mongoDBTimeout    = 30
@@ -92,13 +92,17 @@ data CacheCategory
     | Package
     | Top
     | Count
+    | Licenses
+    | Maintainers
 
 putCacheCategory :: CacheCategory -> B.Put
-putCacheCategory Ranking    = B.putByteString "r"
-putCacheCategory Categories = B.putByteString "c"
-putCacheCategory Package    = B.putByteString "p"
-putCacheCategory Top        = B.putByteString "t"
-putCacheCategory Count      = B.putByteString "n"
+putCacheCategory Ranking     = B.putByteString "r"
+putCacheCategory Categories  = B.putByteString "c"
+putCacheCategory Package     = B.putByteString "p"
+putCacheCategory Top         = B.putByteString "t"
+putCacheCategory Count       = B.putByteString "n"
+putCacheCategory Licenses    = B.putByteString "l"
+putCacheCategory Maintainers = B.putByteString "m"
 
 main :: IO ()
 main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ runApiary def $ do
@@ -110,8 +114,10 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
 
     -- global options
     ("category" ?? "category filter."                       =*: pText)
-        . ("q"        ?? "package query string"                   =?: pText)
-        . ("type"     ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType))
+        . ("maintainer" ?? "maintainer filter"                      =*: pText)
+        . ("license"    ?? "license filter"                         =?: pText)
+        . ("q"          ?? "package query string"                   =?: pText)
+        . ("type"       ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType))
         . switchQuery ("new" ?? "new package only") $ do
 
         [capture|/ranking|]
@@ -125,36 +131,46 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
             . accept "application/json"
             . method GET 
             . document "get package download ranking."
-            . action $ \cats q typ new mbrange mbsince limit mbskp -> do
+            . action $ \cats ms lcs pkg typ new mbrange mbsince limit mbskp -> do
                 (st, ed) <- getDataStartEnd
                 rankingAction st RankingQuery
-                    { rankingEnd        = ed
-                    , rankingLimit      = limit
-                    , rankingSince      = mkSince ed mbrange mbsince
-                    , rankingSkip       = mbskp
-                    , rankingOnlyNew    = new
-                    , rankingCategories = cats
-                    , rankingType       = typ
-                    , rankingPackage    = q
+                    { rankingEnd         = ed
+                    , rankingLimit       = limit
+                    , rankingSince       = mkSince ed mbrange mbsince
+                    , rankingSkip        = mbskp
+                    , rankingOnlyNew     = new
+                    , rankingCategories  = cats
+                    , rankingType        = typ
+                    , rankingPackage     = pkg
+                    , rankingMaintainers = ms
+                    , rankingLicense     = lcs
                     } >>= lazyBytes
 
         [capture|/count|] . accept "application/json" . method GET
             . document "count filtered packages."
-            . action $ \cats q typ new -> do
+            . action $ \cats ms lcs pkg typ new -> do
                 (st, ed) <- getDataStartEnd
                 let key = L.toStrict . B.runPut $ do
                         putCacheCategory Count
                         B.put (toModifiedJulianDay st)
                         B.put (toModifiedJulianDay ed)
-                        mapM_ (B.put . T.encodeUtf8) cats
-                        B.put (fmap T.encodeUtf8 q)
+                        B.put (fmap T.encodeUtf8 cats)
+                        B.put (fmap T.encodeUtf8 ms)
+                        B.put (fmap T.encodeUtf8 lcs)
+                        B.put (fmap T.encodeUtf8 pkg)
                         B.put typ
                         B.put new
                 lazyBytes =<< C.cache key
-                    (fmap A.encode . M.access . M.count $ M.select (rankingFilter ed cats q new typ) "packages")
+                    (fmap A.encode . M.access . M.count $ M.select (rankingFilter ed cats ms lcs pkg new typ) "packages")
 
     [capture|/categories|] . accept "application/json" . method GET
         . document "list of categories." . action $ categoriesAction
+
+    [capture|/maintainers|] . accept "application/json" . method GET
+        . document "list of maintainer." . action $ maintainersAction
+
+    [capture|/licenses|] . accept "application/json" . method GET
+        . document "list of license." . action $ licensesAction
 
     [capture|/package/:T.Text[package name]|]
         . accept "application/json" . method GET
@@ -177,7 +193,11 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
         bytes "flush"
 
     -- / all information used in root page.
-    [capture|/|] . accept "application/json" . method GET . ("category" =*: pText) . action $ rankingApiAction
+    [capture|/|] . accept "application/json" . method GET
+        . ("category"   =*: pText)
+        . ("maintainer" =*: pText)
+        . ("license"    =?: pText)
+        . action $ rankingApiAction
 
     -- static files
     root           . method GET . action $ file "static/main.html"          Nothing
@@ -215,51 +235,113 @@ getDataStartEnd = do
             return v
         Just c -> return c
 
-memcacheRankingKey :: Day -> RankingQuery -> S8.ByteString
-memcacheRankingKey st r = L.toStrict . B.runPut $ do
-    putCacheCategory Ranking
-    B.put (toModifiedJulianDay st)
-    B.put r
-
-memcacheCategoriesKey :: Day -> Day -> S8.ByteString
-memcacheCategoriesKey st ed = L.toStrict . B.runPut $ do
-    putCacheCategory Categories
-    B.put (toModifiedJulianDay st)
-    B.put (toModifiedJulianDay ed)
-
 rankingAction :: (MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, MonadIO m)
               => Day -> RankingQuery -> ActionT exts m L.ByteString
 rankingAction st q = do
-    let key = memcacheRankingKey st q
     C.cache key $ do
         doc <- M.access $ rankingQuery q
         return . A.encode $ A.object [ "ranking" A..= map (toAeson def . filter (\(l M.:= _) -> l /= "_id")) doc
                                      , "start"   A..= fmap (max (UTCTime st 0) . flip UTCTime 0) (rankingSince q)
                                      , "end"     A..= UTCTime (rankingEnd q) 0
                                      ]
+  where
+    key = L.toStrict . B.runPut $
+        putCacheCategory Ranking >> B.put (toModifiedJulianDay st) >> B.put q
+
+categoriesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
+                 => ActionT exts m ()
+categoriesAction = do
+    (_, ed) <- getDataStartEnd
+    (>>= lazyBytes) . C.cache (key ed) $ do
+            doc <- M.access $ M.aggregate "packages"
+                [ ["$project" M.=: ["category" M.=: (1 :: Int)]]
+                , ["$unwind"  M.=: ("$category" :: T.Text)]
+                , ["$group"   M.=: ["_id" M.=: ("$category" :: T.Text), "count" M.=: ["$sum" M.=: (1::Int)]]]
+                , ["$sort"    M.=: ["_id" M.=: (1::Int), "count" M.=: (-1::Int)]]
+                ]
+            return . A.encode $ A.object [ "categories" A..= map conv doc
+                                         , "latest"     A..= UTCTime ed 0
+                                         ]
+  where
+    conv b = A.object [ "category" A..= (M.at "_id"   b :: T.Text)
+                      , "count"    A..= (M.at "count" b :: Int)
+                      ]
+    key ed = L.toStrict . B.runPut $ do
+        putCacheCategory Categories
+        B.put (toModifiedJulianDay ed)
+
+maintainersAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
+                  => ActionT exts m ()
+maintainersAction = do
+    (_, ed) <- getDataStartEnd
+    (>>= lazyBytes) . C.cache (key ed) $ do
+        doc <- M.access $ M.aggregate "packages"
+            [ ["$project" M.=: ["maintainers" M.=: (1 :: Int)]]
+            , ["$unwind"  M.=: ("$maintainers" :: T.Text) ]
+            , ["$group"   M.=: ["_id" M.=: ("$maintainers" :: T.Text), "count" M.=: ["$sum" M.=: (1::Int)]]]
+            , ["$sort"    M.=: ["_id" M.=: (1::Int), "count" M.=: (-1::Int)]]
+            ]
+        return . A.encode $ A.object [ "maintainers" A..= map conv doc
+                                     , "latest"      A..= UTCTime ed 0
+                                     ]
+  where
+    conv b = A.object [ "maintainer" A..= (M.at "_id"   b :: T.Text)
+                      , "count"      A..= (M.at "count" b :: Int)
+                      ]
+    key ed = L.toStrict . B.runPut $ do
+        putCacheCategory Maintainers
+        B.put (toModifiedJulianDay ed)
+
+licensesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
+               => ActionT exts m ()
+licensesAction = do
+    (_, ed) <- getDataStartEnd
+    (>>= lazyBytes) . C.cache (key ed) $ do
+        doc <- M.access $ M.aggregate "packages"
+            [ ["$project" M.=: ["license" M.=: (1 :: Int)]]
+            , ["$group"   M.=: ["_id" M.=: ("$license" :: T.Text), "count" M.=: ["$sum" M.=: (1::Int)]]]
+            , ["$sort"    M.=: ["count" M.=: (-1::Int), "_id" M.=: (1::Int)]]
+            ]
+        return . A.encode $ A.object [ "licenses" A..= map conv doc
+                                     , "latest"   A..= UTCTime ed 0
+                                     ]
+  where
+    conv b = A.object [ "license" A..= (M.at "_id"   b :: T.Text)
+                      , "count"   A..= (M.at "count" b :: Int)
+                      ]
+    key ed = L.toStrict . B.runPut $ do
+        putCacheCategory Licenses
+        B.put (toModifiedJulianDay ed)
 
 rankingApiAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts)
-                 => [T.Text] -> ActionT exts m ()
-rankingApiAction cats = do
+                 => [T.Text] -> [T.Text] -> Maybe T.Text -> ActionT exts m ()
+rankingApiAction cats ms lcs = do
     (st, ed) <- getDataStartEnd
-    let key = L.toStrict . B.runPut $
-              putCacheCategory Top >> mapM_ (B.put . T.encodeUtf8) cats >> B.put (toModifiedJulianDay ed)
-        q = RankingQuery { rankingEnd        = ed 
-                         , rankingLimit      = 10
-                         , rankingSince      = Nothing
-                         , rankingSkip       = Nothing
+    let key = L.toStrict . B.runPut $ do
+              putCacheCategory Top
+              B.put (fmap T.encodeUtf8 cats)
+              B.put (fmap T.encodeUtf8 ms)
+              B.put (fmap T.encodeUtf8 lcs)
+              B.put (toModifiedJulianDay st)
+              B.put (toModifiedJulianDay ed)
+        q = RankingQuery { rankingEnd         = ed 
+                         , rankingLimit       = 10
+                         , rankingSince       = Nothing
+                         , rankingSkip        = Nothing
 
-                         , rankingOnlyNew    = False
-                         , rankingCategories = cats
-                         , rankingType       = Nothing
+                         , rankingOnlyNew     = False
+                         , rankingType        = Nothing
 
-                         , rankingPackage    = Nothing
+                         , rankingPackage     = Nothing
+                         , rankingLicense     = lcs
+                         , rankingCategories  = cats
+                         , rankingMaintainers = ms
                          }
-    r <- C.cache key $ do
+    (>>= lazyBytes) . C.cache key $ do
         tot <- rankingAction st q
         l1w <- rankingAction st q { rankingSince   = Just $ addDays (-7) ed }
         new <- rankingAction st q { rankingOnlyNew = True }
-        n   <- M.access (M.count $ M.select (if null cats then [] else ["category" M.=: ["$in" M.=: cats]]) "packages")
+        n   <- M.access (M.count $ M.select (rankingFilter ed cats ms lcs Nothing False Nothing) "packages")
         return . A.encode $ A.object
                 [ "total"      A..= (A.decode tot :: Maybe A.Value)
                 , "weekly"     A..= (A.decode l1w :: Maybe A.Value)
@@ -267,55 +349,37 @@ rankingApiAction cats = do
                 , "nPackages"  A..= n
                 , "lastUpdate" A..= UTCTime ed 0
                 ]
-    lazyBytes r
-
-categoriesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
-                 => ActionT exts m ()
-categoriesAction = do
-    (st, ed) <- getDataStartEnd
-    let key = memcacheCategoriesKey st ed
-    r <- C.cache key $ do
-            doc <- M.access $ M.aggregate "packages"
-                [ ["$project" M.=: ["category" M.=: (1 :: Int)]]
-                , ["$unwind"  M.=: ("$category" :: T.Text)]
-                , ["$group"   M.=: ["_id" M.=: ("$category" :: T.Text), "count" M.=: ["$sum" M.=: (1::Int)]]]
-                , ["$sort"    M.=: ["_id" M.=: (1::Int), "count" M.=: (1::Int)]]
-                ]
-            return . A.encode $ A.object [ "categories" A..= map conv doc
-                                         , "latest"     A..= UTCTime ed 0
-                                         ]
-    lazyBytes r
-  where
-    conv b = A.object [ "category" A..= (M.at "_id"   b :: T.Text)
-                      , "count"    A..= (M.at "count" b :: Int)
-                      ]
 
 data RankingQuery = RankingQuery
-    { rankingEnd        :: Day
-    , rankingLimit      :: Word
-    , rankingSince      :: Maybe Day
-    , rankingSkip       :: Maybe Word
+    { rankingEnd         :: Day
+    , rankingLimit       :: Word
+    , rankingSince       :: Maybe Day
+    , rankingSkip        :: Maybe Word
 
-    , rankingOnlyNew    :: Bool
-    , rankingCategories :: [T.Text]
-    , rankingType       :: Maybe CabalType
+    , rankingOnlyNew     :: Bool
+    , rankingType        :: Maybe CabalType
 
-    , rankingPackage    :: Maybe T.Text
+    , rankingPackage     :: Maybe T.Text
+    , rankingLicense     :: Maybe T.Text
+    , rankingCategories  :: [T.Text]
+    , rankingMaintainers :: [T.Text]
     }
 
 instance B.Binary RankingQuery where
     get = undefined
-    put RankingQuery{..} = do
-        B.put (toModifiedJulianDay rankingEnd)
-        B.put rankingLimit
-        B.put (maybe 0 toModifiedJulianDay rankingSince)
-        B.put rankingSkip
+    put (RankingQuery end lim snc skp new typ pkg lcs cat mnr) = do
+        B.put (toModifiedJulianDay end)
+        B.put lim
+        B.put (maybe 0 toModifiedJulianDay snc)
+        B.put skp
 
-        B.put rankingOnlyNew
-        mapM_ (B.put . T.encodeUtf8) rankingCategories
-        B.put rankingType
+        B.put new
+        B.put typ
 
-        B.put (fmap T.encodeUtf8 rankingPackage)
+        B.put (fmap T.encodeUtf8 pkg)
+        B.put (fmap T.encodeUtf8 lcs)
+        B.put (fmap T.encodeUtf8 cat)
+        B.put (fmap T.encodeUtf8 mnr)
 
 rankingQuery ::  MonadIO m => RankingQuery -> M.Action m [M.Document]
 rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
@@ -354,11 +418,13 @@ rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
         maybe id (\skp -> (["$skip" M.=: (fromIntegral skp :: Int)]:)) rankingSkip $.
         ["$limit"   M.=: M.Int64 (fromIntegral rankingLimit)] : []
   where
-    filt = rankingFilter rankingEnd rankingCategories rankingPackage rankingOnlyNew rankingType
+    filt = rankingFilter rankingEnd rankingCategories rankingMaintainers rankingLicense rankingPackage rankingOnlyNew rankingType
 
-rankingFilter :: Day -> [T.Text] -> Maybe T.Text -> Bool -> Maybe CabalType -> M.Document
-rankingFilter end cats pkg new typ =
+rankingFilter :: Day -> [T.Text] -> [T.Text] -> Maybe T.Text -> Maybe T.Text -> Bool -> Maybe CabalType -> M.Document
+rankingFilter end cats ms lcs pkg new typ =
     (if null cats then id else (("category"       M.=: ["$in" M.=: cats ]):)) $
+    (if null ms   then id else (("maintainers"    M.=: ["$in" M.=: ms   ]):)) $
+    (case lcs of {Nothing -> id; Just l -> (("license" M.=: l):)}) $
     (case pkg of {Nothing -> id; Just p -> (("name" M.=: M.Regex p "i"):)}) $
     (if not new then id else (("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0]):)) $
     case typ of

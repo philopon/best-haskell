@@ -1,0 +1,7 @@
+<div class="page-header">
+  <h1>Licenses</h1>
+</div>
+
+<div loading-contents complete="complete" error="error">
+  <div ng-repeat="l in licenses"> <a style="font-size: {{fsFun(l.count)}}px" ng-href="#/license/{{l.license}}">{{l.license}}<span>({{l.count | number}}) </span></a></div>
+</div>

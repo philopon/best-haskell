@@ -2,15 +2,6 @@
   <h1>Categories</h1>
 </div>
 
-<div ng-if="complete && !error" id="categories">
+<div loading-contents complete="complete" error="error">
   <a ng-repeat="c in categories" style="font-size: {{fsFun(c.count)}}px" ng-href="#/category/{{c.category}}">{{c.category}}<span>({{c.count | number}}) </span></a>
-</div>
-
-<div ng-if="complete && error">
-  <h1>{{error.title}}</h1>
-  <p>{{error.description}}</p>
-</div>
-
-<div ng-if="!complete" class="center-block text-center">
-  <img class="loading" src='/img/ajax-loader.gif'>
 </div>
