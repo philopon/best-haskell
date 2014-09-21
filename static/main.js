@@ -286,7 +286,9 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         inspectorDate.text(dateFormatter(data.date));
         inspectorCount.text(countFormatter(data.count));
         inspectorTotal.text(countFormatter(data.total));
-        cursor.attr('transform', 'translate(' + mx + ',0)');
+
+        var cx = x(data.date);
+        cursor.attr('transform', 'translate(' + cx + ',0)');
         cursor_initialized = true;
       }
 
