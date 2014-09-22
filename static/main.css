@@ -83,6 +83,24 @@ img.loading {
   stroke-width: 1px;
 }
 
+.downloads-chart .release.line {
+  fill: none;
+  stroke: #fcc;
+  shape-rendering: crispEdges;
+  stroke-width: 1px;
+}
+
+.downloads-chart .release.text.shadow {
+  font-size: 12px;
+  stroke: white;
+  stroke-width: 5px;
+}
+
+.downloads-chart .release.text {
+  fill: red;
+  font-size: 12px;
+}
+
 .downloads-chart .inspector rect {
   fill: white;
   stroke-width: 1px;

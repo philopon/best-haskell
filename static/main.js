@@ -106,7 +106,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 .directive('downloadsChart', function(){ // {{{
   return {
     restrict: 'A',
-    scope: {downloads: '=', height: '@'},
+    scope: {downloads: '=', height: '@', releases: '='},
     link: function($scope, $elems){
       function getScopeSize() {
         var svgwidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
@@ -160,6 +160,52 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       var yt = d3.time.scale.utc().range([height, 0]);
       var yc = d3.time.scale.utc().range([height, 0]);
 
+      var release  = [];
+      var releases = [];
+      var current_date = undefined;
+      var max_release = 1;
+      for (var i = 0; i < $scope.releases.length; i++) {
+        var d = $scope.releases[i];
+        var r = new Date(d.release);
+        if (current_date - r == 0) {
+          release.push(d.version);
+        } else {
+          if (current_date) {
+            releases.push({date: current_date, versions: release});
+          }
+          max_release = Math.max(max_release, release.length);
+          release = [d.version];
+          current_date = r;
+        }
+      }
+      releases.push({date: current_date, versions: release});
+      max_release = Math.max(max_release, release.length);
+
+      for (var i = 0; i < releases.length; i++) {
+        plotarea.append('line')
+          .attr('class', 'release line')
+          .attr('y1', 0)
+      }
+      d3.selectAll('.release.line').data(releases);
+
+      plotarea.append('g')
+          .attr('class', 'y axis left')
+        .append('text')
+          .attr('class', 'axis-label')
+          .attr('transform', 'rotate(-90)')
+          .attr('y', 12)
+          .attr('text-anchor', 'end')
+          .text('total download');
+
+      plotarea.append('g')
+          .attr('class', 'y axis right')
+        .append('text')
+          .attr('class', 'axis-label')
+          .attr('transform', 'rotate(-90)')
+          .attr('y', -4)
+          .attr('text-anchor', 'end')
+          .text('daily download');
+
       var total = d3.svg.line()
         .x(function(d){return x(d.date);})
         .y(function(d){return yt(d.total);});
@@ -172,7 +218,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       var yAxisT = d3.svg.axis().scale(yt).orient('left').ticks(10).tickFormat(countFormatter);
       var yAxisC = d3.svg.axis().scale(yc).orient('right').ticks(10).tickFormat(countFormatter);
 
-     var countPath = plotarea.append('path').attr('class', 'line count');
+      var countPath = plotarea.append('path').attr('class', 'line count');
       var totalPath = plotarea.append('path').attr('class', 'line total');
 
       var cursor = plotarea.append('line')
@@ -182,6 +228,18 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         .attr('x2',   0)
         .attr('y2', height)
         .attr('display', 'none');
+
+      plotarea.append('text')
+        .attr('class', 'release text shadow')
+        .attr('x', 0)
+        .attr('y', -5);
+
+      plotarea.append('text')
+        .attr('class', 'release text')
+        .attr('x', 0)
+        .attr('y', -5);
+
+      var releaseText = d3.selectAll('.release.text').attr('display', 'none');
 
       var inspector = plotarea.append('g')
         .attr('class', 'inspector')
@@ -231,6 +289,13 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         yt.range([height, 0]);
         yc.range([height, 0]);
 
+        svg.selectAll('.release.line')
+          .attr('x1', function(d){return x(d.date)})
+          .attr('x2', function(d){return x(d.date)})
+          .attr('display', function(d){return x(d.date) == 0 ? 'none' : null;})
+          .attr('y2', height);
+
+
         cursor.attr('y2', height);
 
         svg.select('.x.axis').call(xAxis)
@@ -248,8 +313,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
             .attr('transform', 'translate(' + width + ',0)')
             .call(yAxisC);
 
-        svg.select('.line.count').attr('d', count);
-        svg.select('.line.total').attr('d', total);
+        countPath.attr('d', count);
+        totalPath.attr('d', total);
       }
       $(window).on('orientationchange resize', updateWindow);
 
@@ -290,6 +355,18 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         var cx = x(data.date);
         cursor.attr('transform', 'translate(' + cx + ',0)');
         cursor_initialized = true;
+
+        var release = _.find(releases, function(r){return r.date - data.date == 0});
+        if (release) {
+          releaseText
+            .text(release.versions.join(' / '))
+            .attr('display', null)
+            .attr('transform', 'translate(' + cx + ',0)rotate(90)');
+        } else {
+          releaseText.attr('display', 'none');
+        }
+
+
       }
 
       $scope.$watch('downloads', function(newVal){
@@ -305,24 +382,6 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 
         plotarea.append('g')
             .attr('class', 'x axis');
-
-        plotarea.append('g')
-            .attr('class', 'y axis left')
-          .append('text')
-            .attr('class', 'axis-label')
-            .attr('transform', 'rotate(-90)')
-            .attr('y', 12)
-            .attr('text-anchor', 'end')
-            .text('total download');
-
-        plotarea.append('g')
-            .attr('class', 'y axis right')
-          .append('text')
-            .attr('class', 'axis-label')
-            .attr('transform', 'rotate(-90)')
-            .attr('y', -4)
-            .attr('text-anchor', 'end')
-            .text('daily download');
 
         svg
           .on('mouseover', function(){cursorVisible(true)})
@@ -387,6 +446,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     $scope.name           = data.name;
     $rootScope.title      = data.name;
     $scope.packageUrl     = data.packageUrl;
+    $scope.releases       = data.releases;
     $scope.stability      = data.stability;
     $scope.synopsis       = data.synopsis;
     $scope.total          = data.total;
