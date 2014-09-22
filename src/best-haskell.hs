@@ -118,7 +118,8 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
         . ("license"    ?? "license filter"                         =?: pText)
         . ("q"          ?? "package query string"                   =?: pText)
         . ("type"       ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType))
-        . switchQuery ("new" ?? "new package only") $ do
+        . switchQuery ("active" ?? "active package only")
+        . switchQuery ("new"    ?? "new package only") $ do
 
         [capture|/ranking|]
             -- query parameters
@@ -131,7 +132,7 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
             . accept "application/json"
             . method GET 
             . document "get package download ranking."
-            . action $ \cats ms lcs pkg typ new mbrange mbsince limit mbskp -> do
+            . action $ \cats ms lcs pkg typ actv new mbrange mbsince limit mbskp -> do
                 (st, ed) <- getDataStartEnd
                 rankingAction st RankingQuery
                     { rankingEnd         = ed
@@ -139,6 +140,7 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
                     , rankingSince       = mkSince ed mbrange mbsince
                     , rankingSkip        = mbskp
                     , rankingOnlyNew     = new
+                    , rankingOnlyActive  = actv
                     , rankingCategories  = cats
                     , rankingType        = typ
                     , rankingPackage     = pkg
@@ -148,7 +150,7 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
 
         [capture|/count|] . accept "application/json" . method GET
             . document "count filtered packages."
-            . action $ \cats ms lcs pkg typ new -> do
+            . action $ \cats ms lcs pkg typ actv new -> do
                 (st, ed) <- getDataStartEnd
                 let key = L.toStrict . B.runPut $ do
                         putCacheCategory Count
@@ -159,9 +161,10 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
                         B.put (fmap T.encodeUtf8 lcs)
                         B.put (fmap T.encodeUtf8 pkg)
                         B.put typ
+                        B.put actv
                         B.put new
                 lazyBytes =<< C.cache key
-                    (fmap A.encode . M.access . M.count $ M.select (rankingFilter ed cats ms lcs pkg new typ) "packages")
+                    (fmap A.encode . M.access . M.count $ M.select (rankingFilter ed cats ms lcs pkg actv new typ) "packages")
 
     [capture|/categories|] . accept "application/json" . method GET
         . document "list of categories." . action $ categoriesAction
@@ -330,6 +333,7 @@ rankingApiAction cats ms lcs = do
                          , rankingSkip        = Nothing
 
                          , rankingOnlyNew     = False
+                         , rankingOnlyActive  = False
                          , rankingType        = Nothing
 
                          , rankingPackage     = Nothing
@@ -339,13 +343,15 @@ rankingApiAction cats ms lcs = do
                          }
     (>>= lazyBytes) . C.cache key $ do
         tot <- rankingAction st q
-        l1w <- rankingAction st q { rankingSince   = Just $ addDays (-7) ed }
-        new <- rankingAction st q { rankingOnlyNew = True }
-        n   <- M.access (M.count $ M.select (rankingFilter ed cats ms lcs Nothing False Nothing) "packages")
+        l1w <- rankingAction st q { rankingSince      = Just $ addDays (-7) ed }
+        new <- rankingAction st q { rankingOnlyNew    = True }
+        acv <- rankingAction st q { rankingOnlyActive = True }
+        n   <- M.access (M.count $ M.select (rankingFilter ed cats ms lcs Nothing False False Nothing) "packages")
         return . A.encode $ A.object
                 [ "total"      A..= (A.decode tot :: Maybe A.Value)
                 , "weekly"     A..= (A.decode l1w :: Maybe A.Value)
                 , "new"        A..= (A.decode new :: Maybe A.Value)
+                , "active"     A..= (A.decode acv :: Maybe A.Value)
                 , "nPackages"  A..= n
                 , "lastUpdate" A..= UTCTime ed 0
                 ]
@@ -357,6 +363,7 @@ data RankingQuery = RankingQuery
     , rankingSkip        :: Maybe Word
 
     , rankingOnlyNew     :: Bool
+    , rankingOnlyActive  :: Bool
     , rankingType        :: Maybe CabalType
 
     , rankingPackage     :: Maybe T.Text
@@ -367,13 +374,14 @@ data RankingQuery = RankingQuery
 
 instance B.Binary RankingQuery where
     get = undefined
-    put (RankingQuery end lim snc skp new typ pkg lcs cat mnr) = do
+    put (RankingQuery end lim snc skp new actv typ pkg lcs cat mnr) = do
         B.put (toModifiedJulianDay end)
         B.put lim
         B.put (maybe 0 toModifiedJulianDay snc)
         B.put skp
 
         B.put new
+        B.put actv
         B.put typ
 
         B.put (fmap T.encodeUtf8 pkg)
@@ -418,15 +426,16 @@ rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
         maybe id (\skp -> (["$skip" M.=: (fromIntegral skp :: Int)]:)) rankingSkip $.
         ["$limit"   M.=: M.Int64 (fromIntegral rankingLimit)] : []
   where
-    filt = rankingFilter rankingEnd rankingCategories rankingMaintainers rankingLicense rankingPackage rankingOnlyNew rankingType
+    filt = rankingFilter rankingEnd rankingCategories rankingMaintainers rankingLicense rankingPackage rankingOnlyActive rankingOnlyNew rankingType
 
-rankingFilter :: Day -> [T.Text] -> [T.Text] -> Maybe T.Text -> Maybe T.Text -> Bool -> Maybe CabalType -> M.Document
-rankingFilter end cats ms lcs pkg new typ =
+rankingFilter :: Day -> [T.Text] -> [T.Text] -> Maybe T.Text -> Maybe T.Text -> Bool -> Bool -> Maybe CabalType -> M.Document
+rankingFilter end cats ms lcs pkg actv new typ =
     (if null cats then id else (("category"       M.=: ["$in" M.=: cats ]):)) $
     (if null ms   then id else (("maintainers"    M.=: ["$in" M.=: ms   ]):)) $
     (case lcs of {Nothing -> id; Just l -> (("license" M.=: l):)}) $
     (case pkg of {Nothing -> id; Just p -> (("name" M.=: M.Regex p "i"):)}) $
-    (if not new then id else (("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0]):)) $
+    (if not new  then id else (("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0]):)) $
+    (if not actv then id else (("lastRelease"    M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0]):)) $
     case typ of
         Nothing         -> []
         Just Library    -> ["hasLibrary"  M.=: True]

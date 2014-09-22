@@ -51,13 +51,15 @@ fs.createReadStream(process.argv[2], 'utf8').pipe(csv.parse())
         }
 
         var releases = [];
+        var lastRel = undefined;
         for(var ver in versions[pkg]) {
           var d = new Date(versions[pkg][ver]);
           releases.push({version: ver, release: d});
+          if (!lastRel || lastRel < d) { lastRel = d; }
         }
 
         nUpd++;
-        bulk.find({name: pkg}).updateOne({$set: {recent: recent, downloads: history, initialRelease: initial, total: total, releases: releases}});
+        bulk.find({name: pkg}).updateOne({$set: {recent: recent, downloads: history, initialRelease: initial, lastRelease: lastRel, total: total, releases: releases}});
       }
 
       console.log(last);
