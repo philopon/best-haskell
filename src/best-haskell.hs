@@ -22,7 +22,7 @@ import qualified Database.Memcached.Binary.Maybe as C
 import Control.Monad
 import Control.Monad.Trans.Control
 import Control.Applicative
-import Control.Concurrent
+import Control.Concurrent.Lifted
 
 import qualified Data.Binary as B
 import qualified Data.Binary.Put as B
@@ -200,7 +200,7 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
         . ("category"   =*: pText)
         . ("maintainer" =*: pText)
         . ("license"    =?: pText)
-        . action $ rankingApiAction
+        . action $ rankingTablesAction
 
     -- static files
     root           . method GET . action $ file "static/main.html"          Nothing
@@ -234,7 +234,7 @@ getDataStartEnd = do
             let v = (utctDay $ M.at "value" st', utctDay $ M.at "value" ed')
             void . liftIO $ tryPutMVar mvar v
             delay <- cacheTime <$> getExt Proxy
-            void . liftIO . forkIO . void $ threadDelay delay >> tryTakeMVar mvar
+            void . liftIO . fork . void $ threadDelay delay >> tryTakeMVar mvar
             return v
         Just c -> return c
 
@@ -316,9 +316,9 @@ licensesAction = do
         putCacheCategory Licenses
         B.put (toModifiedJulianDay ed)
 
-rankingApiAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts)
-                 => [T.Text] -> [T.Text] -> Maybe T.Text -> ActionT exts m ()
-rankingApiAction cats ms lcs = do
+rankingTablesAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts)
+                    => [T.Text] -> [T.Text] -> Maybe T.Text -> ActionT exts m ()
+rankingTablesAction cats ms lcs = do
     (st, ed) <- getDataStartEnd
     let key = L.toStrict . B.runPut $ do
               putCacheCategory Top
@@ -342,11 +342,21 @@ rankingApiAction cats ms lcs = do
                          , rankingMaintainers = ms
                          }
     (>>= lazyBytes) . C.cache key $ do
-        tot <- rankingAction st q
-        l1w <- rankingAction st q { rankingSince      = Just $ addDays (-7) ed }
-        new <- rankingAction st q { rankingOnlyNew    = True }
-        acv <- rankingAction st q { rankingOnlyActive = True }
-        n   <- M.access (M.count $ M.select (rankingFilter ed cats ms lcs Nothing False False Nothing) "packages")
+        [totRef, l1wRef, newRef, acvRef] <- replicateM 4 newEmptyMVar
+        nRef <- newEmptyMVar
+        _ <- fork $ rankingAction st q >>= putMVar totRef
+        _ <- fork $ rankingAction st q { rankingSince      = Just $ addDays (-7) ed } >>= putMVar l1wRef
+        _ <- fork $ rankingAction st q { rankingOnlyNew    = True }                   >>= putMVar newRef
+        _ <- fork $ rankingAction st q { rankingOnlyActive = True, rankingSince = Just $ addDays (-31) ed } >>= putMVar acvRef
+        _ <- fork $ M.access (M.count $ M.select (rankingFilter ed cats ms lcs Nothing False False Nothing) "packages")
+            >>= putMVar nRef
+
+        tot <- takeMVar totRef
+        l1w <- takeMVar l1wRef
+        new <- takeMVar newRef
+        acv <- takeMVar acvRef
+        n   <- takeMVar nRef
+
         return . A.encode $ A.object
                 [ "total"      A..= (A.decode tot :: Maybe A.Value)
                 , "weekly"     A..= (A.decode l1w :: Maybe A.Value)
