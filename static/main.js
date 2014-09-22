@@ -62,11 +62,10 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     }
   }
 }) // }}}
-.directive('threeTables', function(){ // {{{
+.directive('rankingTables', function(){ // {{{
   return {
     restrict: 'E',
-    templateUrl: 'view/3tables.html',
-    require: 'rankingTable'
+    templateUrl: 'view/rankingTables.html'
   }
 }) // }}}
 .directive('loadingContents', function(){ // {{{
