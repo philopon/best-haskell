@@ -52,7 +52,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   return {
     restrict: 'E',
     templateUrl: 'view/rankingTable.html',
-    scope: {caption: '@', skip: '=', ranking: '=', tooltip: '@', more: '@'},
+    scope: {caption: '@', skip: '=', ranking: '=', tooltip: '@', more: '@', detail: '@'},
     link: function($scope, $elems){
       $scope.$watch('ranking', function(newVal){
         if(!newVal) {return;}
@@ -415,6 +415,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     $scope.total      = data.total.ranking;
     $scope.weekly     = data.weekly.ranking;
     $scope.new        = data.new.ranking;
+    $scope.active     = data.active.ranking;
   }).error(function(data, status){
     $scope.complete = true;
     $scope.error = {
@@ -495,8 +496,9 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 .controller('DetailController', function($rootScope, $scope, $routeParams, $location, $http){ // {{{
   var params = {};
   if      ( $routeParams.mode == 'total'  ) {$scope.denominator = "total downloads" }
-  else if ( $routeParams.mode == 'weekly' ) {$scope.denominator = "last 1 week" ; params['range'] = 7 }
-  else if ( $routeParams.mode == 'new'    ) {$scope.denominator = "new packages"; params['new'] = true }
+  else if ( $routeParams.mode == 'weekly' ) {$scope.denominator = "last 1 week" ;    params['range']  = 7 }
+  else if ( $routeParams.mode == 'new'    ) {$scope.denominator = "new packages";    params['new']    = true }
+  else if ( $routeParams.mode == 'active' ) {$scope.denominator = "active packages"; params['active'] = true; params['range'] = 31 }
   else {$location.path('/');}
 
   $scope.category   = $location.search().category;
@@ -571,6 +573,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       $scope.total      = data.total.ranking;
       $scope.weekly     = data.weekly.ranking;
       $scope.new        = data.new.ranking;
+      $scope.active     = data.active.ranking;
     }).error(function(data, status){
       $scope.complete = true;
       $scope.error = {
@@ -614,6 +617,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       $scope.total      = data.total.ranking;
       $scope.weekly     = data.weekly.ranking;
       $scope.new        = data.new.ranking;
+      $scope.active     = data.active.ranking;
     }).error(function(data, status){
       $scope.complete = true;
       $scope.error = {
@@ -669,6 +673,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       $scope.total      = data.total.ranking;
       $scope.weekly     = data.weekly.ranking;
       $scope.new        = data.new.ranking;
+      $scope.active     = data.active.ranking;
     }).error(function(data, status){
       $scope.complete = true;
       $scope.error = {

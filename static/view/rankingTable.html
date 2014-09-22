@@ -6,7 +6,7 @@
       <th class="rank">#</th>
       <th class="name">name</th>
       <th class="category">category</th>
-      <th class="author visible-md-block visible-lg-block">author</th>
+      <th class="maintainers" ng-if="detail">maintainers</th>
       <th class="count">count</th>
     </tr>
     <tr ng-repeat="item in items">
@@ -15,7 +15,9 @@
       <td class="category">
         <a ng-href="#/category/{{cat}}{{range ? '?range=' + range : ''}}" ng-repeat-start="cat in item.category">{{cat}}</a><span ng-repeat-end ng-if="!$last">, </span>
       </td>
-      <td class="author visible-md-block visible-lg-block">{{item.author}}</td>
+      <td class="maintainers" ng-if="detail">
+        <a ng-href="#/maintainer/{{m}}{{range ? '?range=' + range : ''}}" ng-repeat-start="m in item.maintainers">{{m}}</a><span ng-repeat-end ng-if="!$last">, </span>
+      </td>
       <td class="count">{{item.total | number}}</td>
     </tr>
   </table>
