@@ -156,8 +156,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
           .attr('transform', "scale(" + size.scale + ',' + size.scale + ') translate(' + margin.left + "," + margin.top + ")" );
 
       var x  = d3.time.scale.utc().range([0, width]);
-      var yt = d3.time.scale.utc().range([height, 0]);
-      var yc = d3.time.scale.utc().range([height, 0]);
+      var yt = d3.scale.linear().range([height, 0]);
+      var yc = d3.scale.linear().range([height, 0]);
 
       var release  = [];
       var releases = [];
@@ -318,9 +318,11 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       $(window).on('orientationchange resize', updateWindow);
 
       var cursor_initialized = false;
+
       function cursorVisible (vis) {
-        if (vis && cursor_initialized) { cursor.attr('display', null);   inspector.attr('display', null); } 
-        else     { cursor.attr('display', 'none'); inspector.attr('display', 'none'); }
+        var v = vis && cursor_initialized ? null : 'none';
+        cursor.attr('display',      v);
+        inspector.attr('display',   v);
       }
 
       function mouseMove () {
@@ -331,9 +333,11 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 
         var width  = size.width  - margin.left - margin.right;
         var height = size.height - margin.top  - margin.bottom;
-        if (mx < 0 || mx > width || mouse[1] > height + margin.top || mouse[1] < margin.top) { cursorVisible(false); return }
-
-        cursorVisible(true);
+        if (mx < 0 || mx > width || mouse[1] > height + margin.top || mouse[1] < margin.top) {
+          cursorVisible(false);
+          releaseText.attr('display', 'none');
+          return;
+        } else { cursorVisible(true); }
 
         var dls   = completeDownloads($scope.downloads);
         var x0    = x.invert(mouse[0] - margin.left);
@@ -357,14 +361,18 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 
         var release = _.find(releases, function(r){return r.date - data.date == 0});
         if (release) {
+          var t = release.versions.length > 5
+            ? release.versions.slice(0,5).join(' / ') + ' ...'
+            : release.versions.join(' / ');
           releaseText
-            .text(release.versions.join(' / '))
+            .text(t)
             .attr('display', null)
             .attr('transform', 'translate(' + cx + ',0)rotate(90)');
+          cursor.attr('style', 'stroke: red');
         } else {
           releaseText.attr('display', 'none');
+          cursor.attr('style', null);
         }
-
 
       }
 
