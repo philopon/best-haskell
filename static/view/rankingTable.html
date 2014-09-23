@@ -1,7 +1,10 @@
-<div class="ranking-table">
+<div class="ranking-table" itemscope itemtype="http://schema.org/ItemList">
   <table class="table">
-    <caption ng-if="!more">{{caption}}</caption>
-    <caption ng-if="more"><a ng-href="{{more}}">{{caption}}</a></caption>
+    <meta itemprop="itemListOrder" content="Descending" />
+    <caption itemprop="name">
+      <span ng-if="!more">{{caption}}</span>
+      <a ng-if="more" ng-href="{{more}}">{{caption}}</a>
+    </caption>
     <tr>
       <th class="rank">#</th>
       <th class="name">name</th>
@@ -9,9 +12,10 @@
       <th class="maintainers" ng-if="detail">maintainers</th>
       <th class="count">count</th>
     </tr>
+
     <tr ng-repeat="item in items">
       <td class="rank">{{(skip || 0) + $index + 1}}</td>
-      <td class="name"><a ng-href="#/package/{{item.name}}">{{item.name}}</a></td>
+      <td class="name"><a ng-href="#/package/{{item.name}}" itemprop="itemListElement">{{item.name}}</a></td>
       <td class="category">
         <a ng-href="#/category/{{cat}}{{range ? '?range=' + range : ''}}" ng-repeat-start="cat in item.category">{{cat}}</a><span ng-repeat-end ng-if="!$last">, </span>
       </td>
