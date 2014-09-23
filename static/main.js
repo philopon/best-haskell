@@ -48,6 +48,18 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     .otherwise({ redirectTo: '/' });
 }) // }}}
 
+.factory('popover', function(){ // {{{
+  var popovers = [];
+  return {
+    popovers: popovers,
+    hide: function() {
+      for (var i = 0; i < popovers.length; i ++) {
+        popovers[i].popover('hide');
+      }
+    }
+  }
+}) // }}}
+
 .directive('rankingTable', function(){ // {{{
   return {
     restrict: 'E',
@@ -98,6 +110,24 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         } else {
           $scope.pages = _.range(1, $scope.last + 1);
         }
+      });
+    }
+  }
+}) // }}}
+.directive('popover', function(popover){ // {{{
+  return {
+    restrict: 'A',
+    scope: {popoverTitle: '@', popoverContent: '@'},
+    link: function($scope, $elems) {
+      var elem = $($elems[0]);
+      popover.popovers.push(elem);
+      elem.popover({
+        content: $scope.popoverContent,
+        html: true,
+        container: 'body',
+        placement: 'bottom',
+        title: $scope.popoverTitle,
+        trigger: 'focus'
       });
     }
   }
@@ -402,12 +432,15 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   }
 }) // }}}
 
-.controller('NavbarController', function($scope, $location){ // {{{
+.controller('NavbarController', function($scope, $location, $route, popover){ // {{{
   $scope.error = false;
   $scope.submit = function(){
     if ($scope.query && $scope.query.length > 0) {
       $location.search('page', 1);
+      $location.search('mode', $scope.mode);
       $location.path('/search/' + $scope.query);
+      $route.reload();
+      popover.hide();
     } else {
       $scope.error = true;
     }
@@ -472,11 +505,20 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   $scope.page         = parseInt($location.search().page) || 1;
   $scope.itemsPerPage = 10;
   $rootScope.title    = "Search:" + $routeParams.query;
-  $scope.query        = $routeParams.query;
+  $scope.rawQuery     = $routeParams.query;
 
-  $http({method: 'GET', url: '/count', params: {q: $scope.query}}).success(function(data){
+  var params = {q: [], category: [], maintainer: []};
+  var query = $scope.rawQuery.split(/ +/);
+  for (var i = 0; i < query.length; i++) {
+    if (query[i].match(/category:/i))   {params.category.push(query[i].slice(9).replace('+', ' '));  continue}
+    if (query[i].match(/maintainer:/i)) {params.maintainer.push(query[i].slice(11)); continue}
+    if (query[i].match(/license:/i))    {params.license = query[i].slice(8);  continue}
+    params.q.push(query[i]);
+  }
+
+  $http({method: 'GET', url: '/count', params: params}).success(function(data){
     $scope.hit = parseInt(data);
-    $rootScope.title    = "Search:" + $routeParams.query + '(' + data + ')';
+    $rootScope.title    = "Search:" + $scope.rawQuery + '(' + data + ')';
   });
   
   $scope.paginate = function(num){
@@ -484,10 +526,17 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     $scope.page     = num;
   }
 
+  params.limit = $scope.itemsPerPage;
+  var mode = $location.search().mode;
+  if      (mode == 'weekly') { $scope.mode = "last 1 week"; params['range'] = 7; }
+  else if (mode == 'new')    { $scope.mode = "new packages"; params['new'] = true; }
+  else if (mode == 'active') { $scope.mode = "active packages"; params['active'] = true; params['range'] = 31 }
+
   $scope.$watch('page', function() {
     $location.search('page', $scope.page);
     $scope.skip         = ($scope.page - 1) * $scope.itemsPerPage;
-    $http({method: 'GET', url: '/ranking', params: {q: $scope.query, limit: $scope.itemsPerPage, skip: $scope.skip}}).success(function(data){
+    params.skip = $scope.skip;
+    $http({method: 'GET', url: '/ranking', params: params}).success(function(data){
       $scope.complete = true;
       $scope.result = data.ranking;
     })

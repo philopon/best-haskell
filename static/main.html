@@ -46,11 +46,23 @@
       </div>
 
       <div class="collapse navbar-collapse" id="navbar-collapse">
-        <form class="navbar-form navbar-right" role="search" ng-submit="submit()">
+        <form class="navbar-form navbar-right" role="search" ng-submit="mode=null;submit()">
           <div class="input-group">
-            <input type="text" class="form-control" ng-class="{'input-error': error}" placeholder="package name" ng-model="query">
+            <input type="text" class="form-control" ng-class="{'input-error': error}" placeholder="query"
+              popover ng-model="query"
+              popover-title="Query Language"
+              popover-content="query1 [query2 ...]<br>[category:C1 [category:C2] ...]<br>[maintainer:M1 [maintainer:M2] ...] [license:LICENSE]<br><br>query, category is <strong>and</strong> condition.<br> maintainer is <strong>or</strong> condition.<br>'+' is replaced to ' ' in category.">
             <div class="input-group-btn">
               <button type="submit" class="btn btn-default"><span class="glyphicon glyphicon-search"></span></button>
+              <button type="button" style="padding: 6px 8px;" class="btn btn-default dropdown-toggle" data-toggle="dropdown" tabindex="-1">
+                <span class="caret"></span>
+                <span class="sr-only">Toggle Dropdown</span>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-right" role="menu">
+                <li><a href="javascript:void(0);" ng-click="mode='weekly';submit()">last 1 week</a></li>
+                <li><a href="javascript:void(0);" ng-click="mode='new';submit()">new packages</a></li>
+                <li><a href="javascript:void(0);" ng-click="mode='active';submit()">active packages</a></li>
+              </ul>
             </div>
           </div>
         </form>

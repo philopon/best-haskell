@@ -116,7 +116,7 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
     ("category" ?? "category filter."                       =*: pText)
         . ("maintainer" ?? "maintainer filter"                      =*: pText)
         . ("license"    ?? "license filter"                         =?: pText)
-        . ("q"          ?? "package query string"                   =?: pText)
+        . ("q"          ?? "package query string"                   =*: pText)
         . ("type"       ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType))
         . switchQuery ("active" ?? "active package only")
         . switchQuery ("new"    ?? "new package only") $ do
@@ -336,7 +336,7 @@ rankingTablesAction cats ms lcs = do
                          , rankingOnlyActive  = False
                          , rankingType        = Nothing
 
-                         , rankingPackage     = Nothing
+                         , rankingPackage     = []
                          , rankingLicense     = lcs
                          , rankingCategories  = cats
                          , rankingMaintainers = ms
@@ -348,7 +348,7 @@ rankingTablesAction cats ms lcs = do
         _ <- fork $ rankingAction st q { rankingSince      = Just $ addDays (-7) ed } >>= putMVar l1wRef
         _ <- fork $ rankingAction st q { rankingOnlyNew    = True }                   >>= putMVar newRef
         _ <- fork $ rankingAction st q { rankingOnlyActive = True, rankingSince = Just $ addDays (-31) ed } >>= putMVar acvRef
-        _ <- fork $ M.access (M.count $ M.select (rankingFilter ed cats ms lcs Nothing False False Nothing) "packages")
+        _ <- fork $ M.access (M.count $ M.select (rankingFilter ed cats ms lcs [] False False Nothing) "packages")
             >>= putMVar nRef
 
         tot <- takeMVar totRef
@@ -376,7 +376,7 @@ data RankingQuery = RankingQuery
     , rankingOnlyActive  :: Bool
     , rankingType        :: Maybe CabalType
 
-    , rankingPackage     :: Maybe T.Text
+    , rankingPackage     :: [T.Text]
     , rankingLicense     :: Maybe T.Text
     , rankingCategories  :: [T.Text]
     , rankingMaintainers :: [T.Text]
@@ -387,7 +387,7 @@ instance B.Binary RankingQuery where
     put (RankingQuery end lim snc skp new actv typ pkg lcs cat mnr) = do
         B.put (toModifiedJulianDay end)
         B.put lim
-        B.put (maybe 0 toModifiedJulianDay snc)
+        B.put (fmap toModifiedJulianDay snc)
         B.put skp
 
         B.put new
@@ -402,7 +402,7 @@ instance B.Binary RankingQuery where
 rankingQuery ::  MonadIO m => RankingQuery -> M.Action m [M.Document]
 rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
     Just since ->
-        (if null filt then id else (["$match" M.=: filt]:)) $.
+        (if null filt then id else (:) ["$match" M.=: filt]) $.
         ["$project" M.=: [ "recent"      M.=: M.Int64 1
                          , "synopsis"    M.=: M.Int64 1
                          , "author"      M.=: M.Int64 1
@@ -421,7 +421,7 @@ rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
                          , "total"       M.=: ["$sum"   M.=: ("$recent.count" :: T.Text)]
                          ]] :
         ["$sort"    M.=: ["total" M.=: (-1 :: Int)]] :
-        maybe id (\skp -> (["$skip" M.=: (fromIntegral skp :: Int)]:)) rankingSkip $.
+        maybe id (\skp -> (:) ["$skip" M.=: (fromIntegral skp :: Int)]) rankingSkip $.
         ["$limit"   M.=: M.Int64 (fromIntegral $ min 100 rankingLimit)] : []
     Nothing ->
         (if null filt then id else (["$match" M.=: filt]:)) $.
@@ -433,19 +433,19 @@ rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
                          , "name"        M.=: M.Int64 1
                          ]] :
         ["$sort"    M.=: ["total" M.=: (-1 :: Int)]] :
-        maybe id (\skp -> (["$skip" M.=: (fromIntegral skp :: Int)]:)) rankingSkip $.
+        maybe id (\skp -> (:) ["$skip" M.=: (fromIntegral skp :: Int)]) rankingSkip $.
         ["$limit"   M.=: M.Int64 (fromIntegral rankingLimit)] : []
   where
     filt = rankingFilter rankingEnd rankingCategories rankingMaintainers rankingLicense rankingPackage rankingOnlyActive rankingOnlyNew rankingType
 
-rankingFilter :: Day -> [T.Text] -> [T.Text] -> Maybe T.Text -> Maybe T.Text -> Bool -> Bool -> Maybe CabalType -> M.Document
+rankingFilter :: Day -> [T.Text] -> [T.Text] -> Maybe T.Text -> [T.Text] -> Bool -> Bool -> Maybe CabalType -> M.Document
 rankingFilter end cats ms lcs pkg actv new typ =
-    (if null cats then id else (("category"       M.=: ["$in" M.=: cats ]):)) $
-    (if null ms   then id else (("maintainers"    M.=: ["$in" M.=: ms   ]):)) $
+    (if null cats then id else (:) ("$and" M.=: map (\c -> ["category" M.=: c]) cats)) $
+    (if null ms   then id else (:) ("maintainers"    M.=: ["$in" M.=: ms])) $
     (case lcs of {Nothing -> id; Just l -> (("license" M.=: l):)}) $
-    (case pkg of {Nothing -> id; Just p -> (("name" M.=: M.Regex p "i"):)}) $
-    (if not new  then id else (("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0]):)) $
-    (if not actv then id else (("lastRelease"    M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0]):)) $
+    (if null pkg then id else (:) ("$and" M.=: map (\p -> ["name" M.=: M.Regex p "i"]) pkg)) $
+    (if not new  then id else (:) ("initialRelease" M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0])) $
+    (if not actv then id else (:) ("lastRelease"    M.=: ["$gt" M.=: UTCTime (addDays (-31) end) 0])) $
     case typ of
         Nothing         -> []
         Just Library    -> ["hasLibrary"  M.=: True]
