@@ -10,6 +10,7 @@
       <th class="name">name</th>
       <th class="category">category</th>
       <th class="maintainers" ng-if="detail">maintainers</th>
+      <th class="license" ng-if="detail">license</th>
       <th class="count">count</th>
     </tr>
 
@@ -21,6 +22,9 @@
       </td>
       <td class="maintainers" ng-if="detail">
         <a ng-href="#/maintainer/{{m}}{{range ? '?range=' + range : ''}}" ng-repeat-start="m in item.maintainers">{{m}}</a><span ng-repeat-end ng-if="!$last">, </span>
+      </td>
+      <td class="license" ng-if="detail">
+        <a ng-href="#/license/{{item.license}}{{range ? '?range=' + range : ''}}">{{item.license}}</a>
       </td>
       <td class="count">{{item.total | number}}</td>
     </tr>
