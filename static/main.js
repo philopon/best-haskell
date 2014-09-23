@@ -544,8 +544,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     $scope.skip         = (page - 1) * $scope.itemsPerPage;
     params.skip = $scope.skip;
     $http({method: 'GET', url: '/ranking', params: params}).success(function(data){
-      $scope.complete = true;
       if (page == $scope.page){
+        $scope.complete = true;
         $scope.result = data.ranking;
       }
     })
@@ -597,8 +597,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
     $scope.skip = (page - 1) * $scope.itemsPerPage;
     params['skip'] = $scope.skip;
     $http({method: 'GET', url: '/ranking', params: params}).success(function(data){
-      $scope.complete = true;
       if($scope.page == page) {
+        $scope.complete = true;
         $scope.result   = data.ranking;
       }
     })
