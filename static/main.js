@@ -539,13 +539,15 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
   else if (mode == 'new')    { $scope.mode = "new packages"; params['new'] = true; }
   else if (mode == 'active') { $scope.mode = "active packages"; params['active'] = true; params['range'] = 31 }
 
-  $scope.$watch('page', function() {
-    $location.search('page', $scope.page);
-    $scope.skip         = ($scope.page - 1) * $scope.itemsPerPage;
+  $scope.$watch('page', function(page) {
+    $location.search('page', page);
+    $scope.skip         = (page - 1) * $scope.itemsPerPage;
     params.skip = $scope.skip;
     $http({method: 'GET', url: '/ranking', params: params}).success(function(data){
       $scope.complete = true;
-      $scope.result = data.ranking;
+      if (page == $scope.page){
+        $scope.result = data.ranking;
+      }
     })
     .error(function(data, status){
       $scope.complete = true;
@@ -590,13 +592,15 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
 
   params['limit'] = $scope.itemsPerPage;
 
-  $scope.$watch('page', function(){
-    $location.search('page', $scope.page);
-    $scope.skip = ($scope.page - 1) * $scope.itemsPerPage;
+  $scope.$watch('page', function(page){
+    $location.search('page', page);
+    $scope.skip = (page - 1) * $scope.itemsPerPage;
     params['skip'] = $scope.skip;
     $http({method: 'GET', url: '/ranking', params: params}).success(function(data){
       $scope.complete = true;
-      $scope.result   = data.ranking;
+      if($scope.page == page) {
+        $scope.result   = data.ranking;
+      }
     })
   });
 
