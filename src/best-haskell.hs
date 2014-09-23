@@ -240,13 +240,12 @@ getDataStartEnd = do
 
 rankingAction :: (MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, MonadIO m)
               => Day -> RankingQuery -> ActionT exts m L.ByteString
-rankingAction st q = do
-    C.cache key $ do
-        doc <- M.access $ rankingQuery q
-        return . A.encode $ A.object [ "ranking" A..= map (toAeson def . filter (\(l M.:= _) -> l /= "_id")) doc
-                                     , "start"   A..= fmap (max (UTCTime st 0) . flip UTCTime 0) (rankingSince q)
-                                     , "end"     A..= UTCTime (rankingEnd q) 0
-                                     ]
+rankingAction st q = C.cache key $ do
+    doc <- M.access $ rankingQuery q
+    return . A.encode $ A.object [ "ranking" A..= map (toAeson def . filter (\(l M.:= _) -> l /= "_id")) doc
+                                 , "start"   A..= fmap (max (UTCTime st 0) . flip UTCTime 0) (rankingSince q)
+                                 , "end"     A..= UTCTime (rankingEnd q) 0
+                                 ]
   where
     key = L.toStrict . B.runPut $
         putCacheCategory Ranking >> B.put (toModifiedJulianDay st) >> B.put q
@@ -407,6 +406,7 @@ rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
                          , "synopsis"    M.=: M.Int64 1
                          , "author"      M.=: M.Int64 1
                          , "maintainers" M.=: M.Int64 1
+                         , "license"     M.=: M.Int64 1
                          , "name"        M.=: M.Int64 1
                          , "category"    M.=: M.Int64 1
                          ]] :
@@ -417,6 +417,7 @@ rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
                          , "synopsis"    M.=: ["$first" M.=: ("$synopsis"     :: T.Text)]
                          , "author"      M.=: ["$first" M.=: ("$author"       :: T.Text)]
                          , "maintainers" M.=: ["$first" M.=: ("$maintainers"  :: T.Text)]
+                         , "license"     M.=: ["$first" M.=: ("$license"      :: T.Text)]
                          , "category"    M.=: ["$first" M.=: ("$category"     :: T.Text)]
                          , "total"       M.=: ["$sum"   M.=: ("$recent.count" :: T.Text)]
                          ]] :
@@ -429,6 +430,7 @@ rankingQuery RankingQuery{..} = M.aggregate "packages" $ case rankingSince of
                          , "synopsis"    M.=: M.Int64 1
                          , "author"      M.=: M.Int64 1
                          , "maintainers" M.=: M.Int64 1
+                         , "license"     M.=: M.Int64 1
                          , "category"    M.=: M.Int64 1
                          , "name"        M.=: M.Int64 1
                          ]] :
