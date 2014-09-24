@@ -326,6 +326,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         .style('text-anchor', 'end');
 
       var zoom = d3.behavior.zoom()
+        .scaleExtent([1, 100])
         .on('zoom', updateWindow);
 
       var plotarea = drawarea.append('rect')
@@ -334,6 +335,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         .attr('y', 0)
         .call(zoom);
 
+      var dom = undefined;
+      var scale = 1;
       function updateWindow () {
         var size = getScopeSize();
         var width  = size.width  - margin.left - margin.right;
@@ -343,6 +346,10 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         x.range([0, width]);
         yt.range([height, 0]);
         yc.range([height, 0]);
+        if (d3.event) { scale = d3.event.scale }
+        
+        if(x(dom[0]) > 0) { zoom.translate([0, 0]); }
+        if(x(dom[1]) < width) {zoom.translate([- width * (scale - 1), 0]); }
 
         clip.attr('width', width).attr('height', height);
         plotarea.attr('width', width).attr('height', height);
@@ -438,8 +445,8 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         if(!newVal) {return;}
 
         var dls = completeDownloads($scope.downloads);
-        var ex = d3.extent(dls, function(d){return d.date;});
-        x.domain(ex);
+        dom = d3.extent(dls, function(d){return d.date;});
+        x.domain(dom);
         yt.domain([0, d3.extent(dls, function(d){return d.total;})[1]]);
         yc.domain([0, d3.extent(dls, function(d){return d.count;})[1]]);
 
