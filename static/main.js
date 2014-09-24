@@ -187,7 +187,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
           .attr('width',  size.svgwidth)
           .attr('height', size.svgheight);
 
-      var plotarea = svg.append('g')
+      var drawarea = svg.append('g')
           .attr('transform', "scale(" + size.scale + ',' + size.scale + ') translate(' + margin.left + "," + margin.top + ")" );
 
       var x  = d3.time.scale.utc().range([0, width]);
@@ -216,13 +216,15 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       max_release = Math.max(max_release, release.length);
 
       for (var i = 0; i < releases.length; i++) {
-        plotarea.append('line')
+        drawarea.append('line')
           .attr('class', 'release line')
           .attr('y1', 0)
       }
-      d3.selectAll('.release.line').data(releases);
+      d3.selectAll('.release.line')
+        .attr('clip-path', 'url(#clip)')
+        .data(releases);
 
-      plotarea.append('g')
+      drawarea.append('g')
           .attr('class', 'y axis left')
         .append('text')
           .attr('class', 'axis-label')
@@ -231,7 +233,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
           .attr('text-anchor', 'end')
           .text('total download');
 
-      plotarea.append('g')
+      drawarea.append('g')
           .attr('class', 'y axis right')
         .append('text')
           .attr('class', 'axis-label')
@@ -252,10 +254,14 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       var yAxisT = d3.svg.axis().scale(yt).orient('left').ticks(10).tickFormat(countFormatter);
       var yAxisC = d3.svg.axis().scale(yc).orient('right').ticks(10).tickFormat(countFormatter);
 
-      var countPath = plotarea.append('path').attr('class', 'line count');
-      var totalPath = plotarea.append('path').attr('class', 'line total');
+      var countPath = drawarea.append('path')
+        .attr('class', 'line count')
+        .attr('clip-path', 'url(#clip)');
+      var totalPath = drawarea.append('path')
+        .attr('class', 'line total')
+        .attr('clip-path', 'url(#clip)');
 
-      var cursor = plotarea.append('line')
+      var cursor = drawarea.append('line')
         .attr('class', 'cursor line')
         .attr('x1',   0)
         .attr('y1',   0)
@@ -263,19 +269,25 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         .attr('y2', height)
         .attr('display', 'none');
 
-      plotarea.append('text')
+      drawarea.append('text')
         .attr('class', 'release text shadow')
         .attr('x', 0)
         .attr('y', -5);
 
-      plotarea.append('text')
+      drawarea.append('text')
         .attr('class', 'release text')
         .attr('x', 0)
         .attr('y', -5);
 
+      var clip = drawarea.append('clipPath')
+          .attr('id', 'clip')
+        .append('rect')
+          .attr('x', 0)
+          .attr('y', 0);
+
       var releaseText = d3.selectAll('.release.text').attr('display', 'none');
 
-      var inspector = plotarea.append('g')
+      var inspector = drawarea.append('g')
         .attr('class', 'inspector')
         .attr('display', 'none');
 
@@ -313,22 +325,33 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         .attr('y', 45)
         .style('text-anchor', 'end');
 
+      var zoom = d3.behavior.zoom()
+        .on('zoom', updateWindow);
+
+      var plotarea = drawarea.append('rect')
+        .attr('class', 'plotarea')
+        .attr('x', 0)
+        .attr('y', 0)
+        .call(zoom);
+
       function updateWindow () {
         var size = getScopeSize();
         var width  = size.width  - margin.left - margin.right;
         var height = size.height - margin.top  - margin.bottom;
         svg.attr('width', size.svgwidth).attr('height', size.svgheight);
-        plotarea.attr('transform', "scale(" + size.scale + ',' + size.scale + ') translate(' + margin.left + "," + margin.top + ")" );
+        drawarea.attr('transform', "scale(" + size.scale + ',' + size.scale + ') translate(' + margin.left + "," + margin.top + ")" );
         x.range([0, width]);
         yt.range([height, 0]);
         yc.range([height, 0]);
+
+        clip.attr('width', width).attr('height', height);
+        plotarea.attr('width', width).attr('height', height);
 
         svg.selectAll('.release.line')
           .attr('x1', function(d){return x(d.date)})
           .attr('x2', function(d){return x(d.date)})
           .attr('display', function(d){return x(d.date) == 0 ? 'none' : null;})
           .attr('y2', height);
-
 
         cursor.attr('y2', height);
 
@@ -352,7 +375,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       }
       $(window).on('orientationchange resize', updateWindow);
 
-      var cursor_initialized = false;
+     var cursor_initialized = false;
 
       function cursorVisible (vis) {
         var v = vis && cursor_initialized ? null : 'none';
@@ -415,20 +438,23 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         if(!newVal) {return;}
 
         var dls = completeDownloads($scope.downloads);
-        x.domain(d3.extent(dls, function(d){return d.date;}));
+        var ex = d3.extent(dls, function(d){return d.date;});
+        x.domain(ex);
         yt.domain([0, d3.extent(dls, function(d){return d.total;})[1]]);
         yc.domain([0, d3.extent(dls, function(d){return d.count;})[1]]);
 
         countPath.datum(dls);
         totalPath.datum(dls);
 
-        plotarea.append('g')
+        drawarea.append('g')
             .attr('class', 'x axis');
 
         svg
           .on('mouseover', function(){cursorVisible(true)})
           .on('mouseout',  function(){cursorVisible(false)})
           .on('mousemove', mouseMove);
+
+        zoom.x(x);
 
         updateWindow();
 

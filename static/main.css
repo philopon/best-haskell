@@ -112,6 +112,13 @@ img.loading {
   fill: black;
   font-size: 12px;
 }
+
+.downloads-chart .plotarea {
+  fill: none;
+  cursor: move;
+  pointer-events: all;
+}
+
 /* download chart }}} */
 
 #categories a {
