@@ -21,6 +21,6 @@ static/view/maintainers.html           static/view/maintainers.html
 static/view/search.html                static/view/search.html
 static/view/detail.html                static/view/detail.html
 static/bower_components                static/bower_components
-static/robot.txt                       static/robot.txt
+static/robots.txt                      static/robots.txt
 bower_components/angulartics/dist/angulartics.min.js    bower_components/angulartics/dist/angulartics.min.js 
 bower_components/angulartics/dist/angulartics-ga.min.js bower_components/angulartics/dist/angulartics-ga.min.js 
