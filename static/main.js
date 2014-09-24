@@ -338,6 +338,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
       var dom = undefined;
       var scale = 1;
       function updateWindow () {
+        cursorVisible(false);
         var size = getScopeSize();
         var width  = size.width  - margin.left - margin.right;
         var height = size.height - margin.top  - margin.bottom;
@@ -388,6 +389,7 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         var v = vis && cursor_initialized ? null : 'none';
         cursor.attr('display',      v);
         inspector.attr('display',   v);
+        releaseText.attr('display', v);
       }
 
       function mouseMove () {
@@ -400,7 +402,6 @@ angular.module("bestHaskellApp", ['ngRoute', 'angulartics', 'angulartics.google.
         var height = size.height - margin.top  - margin.bottom;
         if (mx < 0 || mx > width || mouse[1] > height + margin.top || mouse[1] < margin.top) {
           cursorVisible(false);
-          releaseText.attr('display', 'none');
           return;
         } else { cursorVisible(true); }
 
