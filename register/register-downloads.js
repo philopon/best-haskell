@@ -36,7 +36,6 @@ fs.createReadStream(process.argv[2], 'utf8').pipe(csv.parse())
       var first = new Date(last - 1000 * 60 * 60 * 24 * 31);
 
       for(var pkg in downloads) {
-        var update  = false;
         var recent  = [];
         var history = [];
         var total   = 0;

@@ -7,6 +7,8 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 import System.FilePath
 
@@ -20,6 +22,8 @@ import qualified Web.Apiary.Memcached as C
 import qualified Database.Memcached.Binary.Maybe as C
 
 import Control.Monad
+import Control.Monad.Apiary (apiaryExt)
+import Control.Monad.Apiary.Action (getExt)
 import Control.Monad.Trans.Control
 import Control.Applicative
 import Control.Concurrent.Lifted
@@ -29,6 +33,7 @@ import qualified Data.Binary.Put as B
 import qualified Data.Aeson as A
 import Data.Abeson
 import Data.Apiary.Extension
+import Data.Apiary.Param
 import Data.Word
 import Data.Char
 import Data.Typeable
@@ -105,7 +110,7 @@ putCacheCategory Licenses    = B.putByteString "l"
 putCacheCategory Maintainers = B.putByteString "m"
 
 main :: IO ()
-main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ runApiary def $ do
+main = runHerokuWith run extensions def {herokuAppName = Just "best-haskell"} $ do
     -- install middlewares
     middleware $ gzip def
     middleware autohead
@@ -113,26 +118,28 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
     -- API
 
     -- global options
-    ("category" ?? "category filter."                       =*: pText)
-        . ("maintainer" ?? "maintainer filter"                      =*: pText)
-        . ("license"    ?? "license filter"                         =?: pText)
-        . ("q"          ?? "package query string"                   =*: pText)
-        . ("type"       ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType))
-        . switchQuery ("active" ?? "active package only")
-        . switchQuery ("new"    ?? "new package only") $ do
+    ([key|category|] ?? "category filter."                       =*: pText)
+        . ([key|maintainer|] ?? "maintainer filter"                      =*: pText)
+        . ([key|license|]    ?? "license filter"                         =?: pText)
+        . ([key|q|]          ?? "package query string"                   =*: pText)
+        . ([key|type|]       ?? "type of package(executable or library)" =?: (Proxy :: Proxy CabalType))
+        . switchQuery ([key|active|] ?? "active package only")
+        . switchQuery ([key|new|]    ?? "new package only") $ do
 
         [capture|/ranking|]
             -- query parameters
-            . ("range"    ?? "days of aggregation."                   =?: pWord)
-            . ("since"    ?? "date of aggregation. instead of range." =?: (Proxy :: Proxy Day))
-            . ("limit"    ?? "number to fetch ranking."               =?!: (10 :: Word))
-            . ("skip"     ?? "skip data"                              =?: pWord)
+            . ([key|range|] ?? "days of aggregation."                   =?: pWord)
+            . ([key|since|] ?? "date of aggregation. instead of range." =?: (Proxy :: Proxy Day))
+            . ([key|limit|] ?? "number to fetch ranking."               =?!: (10 :: Word))
+            . ([key|skip|]  ?? "skip data"                              =?: pWord)
 
             -- filters
             . accept "application/json"
             . method GET 
-            . document "get package download ranking."
-            . action $ \cats ms lcs pkg typ actv new mbrange mbsince limit mbskp -> do
+            . document "get package download ranking." . action $ do
+                (cats,ms,lcs,pkg,typ,actv,new,mbrange,mbsince,limit,mbskp)
+                    <- [params|category,maintainer,license,q,type,active,new,range,since,limit,skip|]
+
                 (st, ed) <- getDataStartEnd
                 rankingAction st RankingQuery
                     { rankingEnd         = ed
@@ -150,9 +157,10 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
 
         [capture|/count|] . accept "application/json" . method GET
             . document "count filtered packages."
-            . action $ \cats ms lcs pkg typ actv new -> do
+            . action $ do
+                (cats,ms,lcs,pkg,typ,actv,new) <- [params|category,maintainer,license,q,type,active,new|]
                 (st, ed) <- getDataStartEnd
-                let key = L.toStrict . B.runPut $ do
+                let k = L.toStrict . B.runPut $ do
                         putCacheCategory Count
                         B.put (toModifiedJulianDay st)
                         B.put (toModifiedJulianDay ed)
@@ -163,7 +171,7 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
                         B.put typ
                         B.put actv
                         B.put new
-                lazyBytes =<< C.cache key
+                lazyBytes =<< C.cache k
                     (fmap A.encode . M.access . M.count $ M.select (rankingFilter ed cats ms lcs pkg actv new typ) "packages")
 
     [capture|/categories|] . accept "application/json" . method GET
@@ -175,15 +183,16 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
     [capture|/licenses|] . accept "application/json" . method GET
         . document "list of license." . action $ licensesAction
 
-    [capture|/package/:T.Text[package name]|]
+    [capture|/package/package::T.Text[package name]|]
         . accept "application/json" . method GET
-        . document "package information" . action $ \pkg -> do
+        . document "package information" . action $ do
+            pkg <- param [key|package|]
             (_,ed) <- getDataStartEnd
-            let key = L.toStrict . B.runPut $ do
+            let k = L.toStrict . B.runPut $ do
                     putCacheCategory Package
                     B.putByteString (T.encodeUtf8 pkg)
                     B.put           (toModifiedJulianDay ed)
-            C.cacheMaybe key (M.access $ M.findOne (M.select ["name" M.=: pkg] "packages") {
+            C.cacheMaybe k (M.access $ M.findOne (M.select ["name" M.=: pkg] "packages") {
                 M.project = ["_id" M.=: (0::Int), "recent" M.=: (0::Int)]
                 } >>= return . fmap (A.encode . toAeson def)) >>= \case
                 Nothing -> status status404 >> bytes "package not found." >> stop
@@ -197,14 +206,16 @@ main = herokuWith extensions run def {herokuAppName = Just "best-haskell"} $ run
 
     -- / all information used in root page.
     [capture|/tables|] . accept "application/json" . method GET
-        . ("category"   =*: pText)
-        . ("maintainer" =*: pText)
-        . ("license"    =?: pText)
+        . ([key|category|]   =*: pText)
+        . ([key|maintainer|] =*: pText)
+        . ([key|license|]    =?: pText)
         . action $ rankingTablesAction
 
     -- static files
-    root           . method GET . action $ file "static/main.html"          Nothing
-    [capture|/**|] . method GET . action $ \f -> file (joinPath $ "static" : map T.unpack f) Nothing
+    root               . method GET . action $ file "static/main.html"          Nothing
+    [capture|/**rest|] . method GET . action $ do
+        f <- param [key|rest|]
+        file (joinPath $ "static" : map T.unpack f) Nothing
 
     -- other
     [capture|/nop|] . method GET . document "no operation to keep wake up on heroku." . action $ bytes "nop\n"
@@ -223,7 +234,7 @@ infixr 5 $.
 ($.) = ($)
 
 getDataStartEnd :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has AppConfig exts)
-                => ActionT exts m (Day, Day)
+                => ActionT exts prms m (Day, Day)
 getDataStartEnd = do
     mvar <- startEndCache <$> getExt Proxy
     liftIO (tryReadMVar mvar) >>= \case
@@ -239,22 +250,22 @@ getDataStartEnd = do
         Just c -> return c
 
 rankingAction :: (MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, MonadIO m)
-              => Day -> RankingQuery -> ActionT exts m L.ByteString
-rankingAction st q = C.cache key $ do
+              => Day -> RankingQuery -> ActionT exts prms m L.ByteString
+rankingAction st q = C.cache k $ do
     doc <- M.access $ rankingQuery q
     return . A.encode $ A.object [ "ranking" A..= map (toAeson def . filter (\(l M.:= _) -> l /= "_id")) doc
                                  , "start"   A..= fmap (max (UTCTime st 0) . flip UTCTime 0) (rankingSince q)
                                  , "end"     A..= UTCTime (rankingEnd q) 0
                                  ]
   where
-    key = L.toStrict . B.runPut $
+    k = L.toStrict . B.runPut $
         putCacheCategory Ranking >> B.put (toModifiedJulianDay st) >> B.put q
 
 categoriesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
-                 => ActionT exts m ()
+                 => ActionT exts prms m ()
 categoriesAction = do
     (_, ed) <- getDataStartEnd
-    (>>= lazyBytes) . C.cache (key ed) $ do
+    (>>= lazyBytes) . C.cache (k ed) $ do
             doc <- M.access $ M.aggregate "packages"
                 [ ["$project" M.=: ["category" M.=: (1 :: Int)]]
                 , ["$unwind"  M.=: ("$category" :: T.Text)]
@@ -268,15 +279,15 @@ categoriesAction = do
     conv b = A.object [ "category" A..= (M.at "_id"   b :: T.Text)
                       , "count"    A..= (M.at "count" b :: Int)
                       ]
-    key ed = L.toStrict . B.runPut $ do
+    k ed = L.toStrict . B.runPut $ do
         putCacheCategory Categories
         B.put (toModifiedJulianDay ed)
 
 maintainersAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
-                  => ActionT exts m ()
+                  => ActionT exts prms m ()
 maintainersAction = do
     (_, ed) <- getDataStartEnd
-    (>>= lazyBytes) . C.cache (key ed) $ do
+    (>>= lazyBytes) . C.cache (k ed) $ do
         doc <- M.access $ M.aggregate "packages"
             [ ["$project" M.=: ["maintainers" M.=: (1 :: Int)]]
             , ["$unwind"  M.=: ("$maintainers" :: T.Text) ]
@@ -290,15 +301,15 @@ maintainersAction = do
     conv b = A.object [ "maintainer" A..= (M.at "_id"   b :: T.Text)
                       , "count"      A..= (M.at "count" b :: Int)
                       ]
-    key ed = L.toStrict . B.runPut $ do
+    k ed = L.toStrict . B.runPut $ do
         putCacheCategory Maintainers
         B.put (toModifiedJulianDay ed)
 
 licensesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
-               => ActionT exts m ()
+               => ActionT exts prms m ()
 licensesAction = do
     (_, ed) <- getDataStartEnd
-    (>>= lazyBytes) . C.cache (key ed) $ do
+    (>>= lazyBytes) . C.cache (k ed) $ do
         doc <- M.access $ M.aggregate "packages"
             [ ["$project" M.=: ["license" M.=: (1 :: Int)]]
             , ["$group"   M.=: ["_id" M.=: ("$license" :: T.Text), "count" M.=: ["$sum" M.=: (1::Int)]]]
@@ -311,15 +322,17 @@ licensesAction = do
     conv b = A.object [ "license" A..= (M.at "_id"   b :: T.Text)
                       , "count"   A..= (M.at "count" b :: Int)
                       ]
-    key ed = L.toStrict . B.runPut $ do
+    k ed = L.toStrict . B.runPut $ do
         putCacheCategory Licenses
         B.put (toModifiedJulianDay ed)
 
-rankingTablesAction :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts)
-                    => [T.Text] -> [T.Text] -> Maybe T.Text -> ActionT exts m ()
-rankingTablesAction cats ms lcs = do
+rankingTablesAction :: ( MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts
+                       , Members ["category" := [T.Text], "maintainer" := [T.Text], "license" := Maybe T.Text] prms
+                       ) => ActionT exts prms m ()
+rankingTablesAction = do
+    (cats,ms,lcs) <- [params|category,maintainer,license|]
     (st, ed) <- getDataStartEnd
-    let key = L.toStrict . B.runPut $ do
+    let k = L.toStrict . B.runPut $ do
               putCacheCategory Top
               B.put (fmap T.encodeUtf8 cats)
               B.put (fmap T.encodeUtf8 ms)
@@ -340,7 +353,7 @@ rankingTablesAction cats ms lcs = do
                          , rankingCategories  = cats
                          , rankingMaintainers = ms
                          }
-    (>>= lazyBytes) . C.cache key $ do
+    (>>= lazyBytes) . C.cache k $ do
         [totRef, l1wRef, newRef, acvRef] <- replicateM 4 newEmptyMVar
         nRef <- newEmptyMVar
         _ <- fork $ rankingAction st q >>= putMVar totRef
