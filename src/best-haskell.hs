@@ -177,8 +177,13 @@ main = runHerokuWith run extensions def {herokuAppName = Just "best-haskell"} $ 
                         B.put typ
                         B.put actv
                         B.put new
+                    ds = def { H.table = "packages"
+                             , H.operation = H.SELECT
+                             , H.sqlTraceRollupName = "get_package_count"
+                             }
                 lazyBytes =<< C.cache k
-                    (fmap A.encode . M.access . M.count $ M.select (rankingFilter ed cats ms lcs pkg actv new typ) "packages")
+                    (fmap A.encode . H.datastoreSegment H.autoScope ds $
+                    M.access . M.count $ M.select (rankingFilter ed cats ms lcs pkg actv new typ) "packages")
 
     [capture|/categories|] . accept "application/json" . method GET
         . document "list of categories." . action $ categoriesAction
@@ -198,7 +203,11 @@ main = runHerokuWith run extensions def {herokuAppName = Just "best-haskell"} $ 
                     putCacheCategory Package
                     B.putByteString (T.encodeUtf8 pkg)
                     B.put           (toModifiedJulianDay ed)
-            C.cacheMaybe k (M.access $ M.findOne (M.select ["name" M.=: pkg] "packages") {
+                ds = def { H.table = "packages"
+                         , H.operation = H.SELECT
+                         , H.sqlTraceRollupName = "get_package_information"
+                         }
+            C.cacheMaybe k (H.datastoreSegment H.autoScope ds $ M.access $ M.findOne (M.select ["name" M.=: pkg] "packages") {
                 M.project = ["_id" M.=: (0::Int), "recent" M.=: (0::Int)]
                 } >>= return . fmap (A.encode . toAeson def)) >>= \case
                 Nothing -> status status404 >> bytes "package not found." >> stop
@@ -239,13 +248,13 @@ infixr 5 $.
 ($.) :: (a -> b) -> a -> b
 ($.) = ($)
 
-getDataStartEnd :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has AppConfig exts)
+getDataStartEnd :: (MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has AppConfig exts, Has H.Helics exts)
                 => ActionT exts prms m (Day, Day)
 getDataStartEnd = do
     mvar <- startEndCache <$> getExt Proxy
     liftIO (tryReadMVar mvar) >>= \case
         Nothing -> do
-            (Just st', Just ed') <- M.access $ (,)
+            (Just st', Just ed') <- H.datastoreSegment H.autoScope ds $ M.access $ (,)
                 <$> M.findOne (M.select ["key" M.=: ("recent_start" :: T.Text)] "config")
                 <*> M.findOne (M.select ["key" M.=: ("last_update"  :: T.Text)] "config")
             let v = (utctDay $ M.at "value" st', utctDay $ M.at "value" ed')
@@ -254,11 +263,14 @@ getDataStartEnd = do
             void . liftIO . fork . void $ threadDelay delay >> tryTakeMVar mvar
             return v
         Just c -> return c
+  where
+    ds = def { H.table = "config", H.operation = H.SELECT, H.sqlTraceRollupName = "select_recentstart_and_lastupdate" }
 
-rankingAction :: (MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, MonadIO m)
+rankingAction :: (MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, MonadIO m, Has H.Helics exts)
               => Day -> RankingQuery -> ActionT exts prms m L.ByteString
 rankingAction st q = C.cache k $ do
-    doc <- M.access $ rankingQuery q
+    let ds = def { H.table = "packages", H.operation = H.SELECT, H.sqlTraceRollupName = "get_ranking" }
+    doc <- H.datastoreSegment H.autoScope ds $ M.access $ rankingQuery q
     return . A.encode $ A.object [ "ranking" A..= map (toAeson def . filter (\(l M.:= _) -> l /= "_id")) doc
                                  , "start"   A..= fmap (max (UTCTime st 0) . flip UTCTime 0) (rankingSince q)
                                  , "end"     A..= UTCTime (rankingEnd q) 0
@@ -267,12 +279,13 @@ rankingAction st q = C.cache k $ do
     k = L.toStrict . B.runPut $
         putCacheCategory Ranking >> B.put (toModifiedJulianDay st) >> B.put q
 
-categoriesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
+categoriesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts, Has H.Helics exts)
                  => ActionT exts prms m ()
 categoriesAction = do
+    let ds = def { H.table = "packages", H.operation = H.SELECT, H.sqlTraceRollupName = "get_categoriy_list" }
     (_, ed) <- getDataStartEnd
     (>>= lazyBytes) . C.cache (k ed) $ do
-            doc <- M.access $ M.aggregate "packages"
+            doc <- H.datastoreSegment H.autoScope ds $ M.access $ M.aggregate "packages"
                 [ ["$project" M.=: ["category" M.=: (1 :: Int)]]
                 , ["$unwind"  M.=: ("$category" :: T.Text)]
                 , ["$group"   M.=: ["_id" M.=: ("$category" :: T.Text), "count" M.=: ["$sum" M.=: (1::Int)]]]
@@ -289,12 +302,13 @@ categoriesAction = do
         putCacheCategory Categories
         B.put (toModifiedJulianDay ed)
 
-maintainersAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
+maintainersAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts, Has H.Helics exts)
                   => ActionT exts prms m ()
 maintainersAction = do
     (_, ed) <- getDataStartEnd
+    let ds = def { H.table = "packages", H.operation = H.SELECT, H.sqlTraceRollupName = "get_maintainer_list" }
     (>>= lazyBytes) . C.cache (k ed) $ do
-        doc <- M.access $ M.aggregate "packages"
+        doc <- H.datastoreSegment H.autoScope ds $ M.access $ M.aggregate "packages"
             [ ["$project" M.=: ["maintainers" M.=: (1 :: Int)]]
             , ["$unwind"  M.=: ("$maintainers" :: T.Text) ]
             , ["$group"   M.=: ["_id" M.=: ("$maintainers" :: T.Text), "count" M.=: ["$sum" M.=: (1::Int)]]]
@@ -311,12 +325,13 @@ maintainersAction = do
         putCacheCategory Maintainers
         B.put (toModifiedJulianDay ed)
 
-licensesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts)
+licensesAction :: (MonadIO m, MonadBaseControl IO m, Has C.Memcached exts, Has M.MongoDB exts, Has AppConfig exts, Has H.Helics exts)
                => ActionT exts prms m ()
 licensesAction = do
     (_, ed) <- getDataStartEnd
+    let ds = def { H.table = "packages", H.operation = H.SELECT, H.sqlTraceRollupName = "get_license_list" }
     (>>= lazyBytes) . C.cache (k ed) $ do
-        doc <- M.access $ M.aggregate "packages"
+        doc <- H.datastoreSegment H.autoScope ds $ M.access $ M.aggregate "packages"
             [ ["$project" M.=: ["license" M.=: (1 :: Int)]]
             , ["$group"   M.=: ["_id" M.=: ("$license" :: T.Text), "count" M.=: ["$sum" M.=: (1::Int)]]]
             , ["$sort"    M.=: ["count" M.=: (-1::Int), "_id" M.=: (1::Int)]]
@@ -332,7 +347,7 @@ licensesAction = do
         putCacheCategory Licenses
         B.put (toModifiedJulianDay ed)
 
-rankingTablesAction :: ( MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts
+rankingTablesAction :: ( MonadIO m, MonadBaseControl IO m, Has M.MongoDB exts, Has C.Memcached exts, Has AppConfig exts, Has H.Helics exts
                        , Members ["category" := [T.Text], "maintainer" := [T.Text], "license" := Maybe T.Text] prms
                        ) => ActionT exts prms m ()
 rankingTablesAction = do
@@ -359,6 +374,7 @@ rankingTablesAction = do
                          , rankingCategories  = cats
                          , rankingMaintainers = ms
                          }
+    let ds = def { H.table = "packages", H.operation = H.SELECT, H.sqlTraceRollupName = "get_count_in_filter" }
     (>>= lazyBytes) . C.cache k $ do
         [totRef, l1wRef, newRef, acvRef] <- replicateM 4 newEmptyMVar
         nRef <- newEmptyMVar
@@ -366,7 +382,8 @@ rankingTablesAction = do
         _ <- fork $ rankingAction st q { rankingSince      = Just $ addDays (-7) ed } >>= putMVar l1wRef
         _ <- fork $ rankingAction st q { rankingOnlyNew    = True }                   >>= putMVar newRef
         _ <- fork $ rankingAction st q { rankingOnlyActive = True, rankingSince = Just $ addDays (-31) ed } >>= putMVar acvRef
-        _ <- fork $ M.access (M.count $ M.select (rankingFilter ed cats ms lcs [] False False Nothing) "packages")
+        _ <- fork $ H.datastoreSegment H.autoScope ds $
+            M.access (M.count $ M.select (rankingFilter ed cats ms lcs [] False False Nothing) "packages")
             >>= putMVar nRef
 
         tot <- takeMVar totRef
