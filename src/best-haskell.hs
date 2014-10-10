@@ -17,6 +17,7 @@ import Web.Apiary.Heroku
 import Network.Wai.Middleware.Gzip
 import Network.Wai.Middleware.Autohead
 import Network.Wai.Handler.Warp
+import qualified Web.Apiary.Helics    as H
 import qualified Web.Apiary.MongoDB   as M
 import qualified Web.Apiary.Memcached as C
 import qualified Database.Memcached.Binary.Maybe as C
@@ -48,6 +49,7 @@ data AppConfig = AppConfig { flushHandlerEnable :: Bool
                            , cacheTime          :: Int
                            , startEndCache      :: MVar (Day, Day)
                            }
+instance Extension AppConfig
 
 initApp :: MonadIO m => Initializer' m AppConfig
 initApp = initializer' . liftIO $
@@ -65,8 +67,12 @@ memcachedConfig = def { C.cacheConfig = Just def
                       }
 
 -- | combined extension initializer.
-extensions :: Initializer IO '[Heroku] '[AppConfig, C.Memcached, M.MongoDB, Heroku]
-extensions = M.initHerokuMongoDB mongoConfig +> C.initHerokuMemcached memcachedConfig +> initApp
+extensions :: Initializer IO '[Heroku] '[AppConfig, C.Memcached, M.MongoDB, H.Helics, Heroku]
+extensions =
+   H.initHerokuHelics def { H.appName = "best-haskell" } +>
+   M.initHerokuMongoDB mongoConfig +>
+   C.initHerokuMemcached memcachedConfig +>
+   initApp
 
 -- | cabal type (Executable|Library) for query.
 data CabalType = Executable | Library deriving (Typeable, Show)
