@@ -53,7 +53,7 @@ instance Extension AppConfig
 
 initApp :: MonadIO m => Initializer' m AppConfig
 initApp = initializer' . liftIO $
-    AppConfig True  (600 * 10^(6::Int)) <$> newEmptyMVar
+    AppConfig False (600 * 10^(6::Int)) <$> newEmptyMVar
 
 mongoConfig :: M.MongoDBConfig
 mongoConfig = def { M.mongoDBTimeout    = 30
