@@ -48,6 +48,7 @@ data AppConfig = AppConfig { flushHandlerEnable :: Bool
                            , cacheTime          :: Int
                            , startEndCache      :: MVar (Day, Day)
                            }
+instance Extension AppConfig
 
 initApp :: MonadIO m => Initializer' m AppConfig
 initApp = initializer' . liftIO $
