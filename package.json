@@ -1,10 +1,9 @@
 {
   "name": "best-haskell",
   "version": "0.1.0",
-  "dependencies": {
+  "devDependencies": {
     "csv": "^0.4.0",
     "mongodb": "^1.4.11",
     "request": "^2.44.0"
-  },
-  "devDependencies": {}
+  }
 }
