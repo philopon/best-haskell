@@ -1,0 +1,8 @@
+/*
+!/Procfile
+!/bower_components/angulartics/dist/angulartics.min.js
+!/bower_components/angulartics/dist/angulartics-ga.min.js
+!/libs/*
+!/dist/build/best-haskell/best-haskell
+!/package.json
+!/static/**

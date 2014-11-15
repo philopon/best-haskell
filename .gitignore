@@ -1,7 +1,12 @@
 .cabal-sandbox
 *.swp
 cabal.sandbox.config
-dist
 node_modules
+/dist/*
+!/dist/build
+/dist/build/*
+!/dist/build/best-haskell
+/dist/build/best-haskell/*
+!/dist/build/best-haskell/best-haskell
 tmpdata
 bower_components/

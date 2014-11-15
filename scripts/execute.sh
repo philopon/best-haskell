@@ -1,4 +1,4 @@
 #!/bin/bash
 
 export LD_LIBRARY_PATH=./libs
-exec ./best-haskell $PORT
+exec ./dist/build/best-haskell/best-haskell $PORT
