@@ -23,8 +23,6 @@ import qualified Web.Apiary.Memcached as C
 import qualified Database.Memcached.Binary.Maybe as C
 
 import Control.Monad
-import Control.Monad.Apiary (apiaryExt)
-import Control.Monad.Apiary.Action (getExt)
 import Control.Monad.Trans.Control
 import Control.Applicative
 import Control.Concurrent.Lifted
@@ -214,7 +212,7 @@ main = runHerokuWith run extensions def {herokuAppName = Just "best-haskell"} $ 
                 Just p  -> lazyBytes p
 
     -- /flush flushAll memcached
-    ac <- apiaryExt (Proxy :: Proxy AppConfig)
+    ac <- getExt (Proxy :: Proxy AppConfig)
     when (flushHandlerEnable ac) $ [capture|/flush|] . method GET . action $ do
         _ <- C.memcached C.flushAll
         bytes "flush"
